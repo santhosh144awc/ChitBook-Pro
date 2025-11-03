@@ -8,10 +8,12 @@ import {
   updateClient,
   deleteClient,
   getPayments,
+  getGroupMembersByClientId,
 } from "@/lib/firestore";
 import type { Client } from "@/types";
 import toast from "react-hot-toast";
 import { formatDate } from "@/lib/utils";
+import Link from "next/link";
 
 export default function ClientsPage() {
   const { user } = useAuth();
@@ -28,6 +30,7 @@ export default function ClientsPage() {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [viewingClient, setViewingClient] = useState<Client | null>(null);
   const [deletingClient, setDeletingClient] = useState<Client | null>(null);
+  const [clientGroupMemberships, setClientGroupMemberships] = useState<Array<{ groupId: string; groupName: string }>>([]);
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -103,21 +106,48 @@ export default function ClientsPage() {
     }
   };
 
-  const handleDeleteClick = (client: Client) => {
+  const handleDeleteClick = async (client: Client) => {
     setDeletingClient(client);
-    setShowDeleteModal(true);
+    
+    // Check which groups this client belongs to
+    try {
+      const memberships = await getGroupMembersByClientId(user!.uid, client.id);
+      const groupInfo = memberships.map(m => ({
+        groupId: m.groupId,
+        groupName: m.groupName
+      }));
+      setClientGroupMemberships(groupInfo);
+      setShowDeleteModal(true);
+    } catch (error) {
+      console.error("Error fetching group memberships:", error);
+      setClientGroupMemberships([]);
+      setShowDeleteModal(true);
+    }
   };
 
   const handleDelete = async () => {
     if (!deletingClient) return;
 
     try {
+      // Check if client is a member of any groups
+      if (clientGroupMemberships.length > 0) {
+        toast.error(
+          `Cannot delete client. Please remove them from ${clientGroupMemberships.length} group(s) first.`,
+          { duration: 5000 }
+        );
+        setShowDeleteModal(false);
+        setDeletingClient(null);
+        setClientGroupMemberships([]);
+        return;
+      }
+
       // Check if client has any payments
       const payments = await getPayments(user!.uid, { clientId: deletingClient.id });
       if (payments.length > 0) {
         toast.error("Cannot delete client with existing payments");
         setShowDeleteModal(false);
         setDeletingClient(null);
+        setClientGroupMemberships([]);
         return;
       }
 
@@ -125,6 +155,7 @@ export default function ClientsPage() {
       toast.success("Client deleted successfully");
       setShowDeleteModal(false);
       setDeletingClient(null);
+      setClientGroupMemberships([]);
       loadClients();
     } catch (error: any) {
       console.error("Error deleting client:", error);
@@ -443,24 +474,70 @@ export default function ClientsPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
             <h2 className="text-2xl font-bold text-gray-800 mb-4">Delete Client</h2>
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to delete <strong>{deletingClient.name}</strong>? This action
-              cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <button onClick={handleDelete} className="btn-danger flex-1">
-                Delete
-              </button>
-              <button
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setDeletingClient(null);
-                }}
-                className="btn-secondary flex-1"
-              >
-                Cancel
-              </button>
-            </div>
+            
+            {clientGroupMemberships.length > 0 ? (
+              <div>
+                <p className="text-red-600 font-semibold mb-3">
+                  Cannot delete <strong>{deletingClient.name}</strong> because they are a member of the following group(s):
+                </p>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 max-h-48 overflow-y-auto">
+                  <ul className="space-y-2">
+                    {clientGroupMemberships.map((membership) => (
+                      <li key={membership.groupId} className="flex items-center">
+                        <span className="text-red-700 font-medium">• {membership.groupName}</span>
+                        <Link
+                          href={`/groups/${membership.groupId}`}
+                          className="ml-2 text-primary-600 hover:text-primary-700 text-sm underline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowDeleteModal(false);
+                            setDeletingClient(null);
+                            setClientGroupMemberships([]);
+                          }}
+                        >
+                          (View Group)
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <p className="text-gray-600 mb-4 text-sm">
+                  Please remove this client from all groups before deleting.
+                </p>
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setDeletingClient(null);
+                    setClientGroupMemberships([]);
+                  }}
+                  className="btn-secondary w-full"
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <>
+                <p className="text-gray-600 mb-6">
+                  Are you sure you want to delete <strong>{deletingClient.name}</strong>? This action
+                  cannot be undone.
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={handleDelete} className="btn-danger flex-1">
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowDeleteModal(false);
+                      setDeletingClient(null);
+                      setClientGroupMemberships([]);
+                    }}
+                    className="btn-secondary flex-1"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

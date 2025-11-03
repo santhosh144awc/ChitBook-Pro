@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { getGroups, createGroup, updateGroup, deleteGroup } from "@/lib/firestore";
+import { getGroups, createGroup, updateGroup, deleteGroup, getAuctions, getPayments } from "@/lib/firestore";
 import type { Group } from "@/types";
 import toast from "react-hot-toast";
 import { formatDate, formatCurrency } from "@/lib/utils";
@@ -21,6 +21,7 @@ export default function GroupsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [deletingGroup, setDeletingGroup] = useState<Group | null>(null);
+  const [deletionStats, setDeletionStats] = useState<{ auctionCount: number; paymentCount: number } | null>(null);
   const [formData, setFormData] = useState({
     groupName: "",
     startDate: "",
@@ -110,8 +111,29 @@ export default function GroupsPage() {
     }
   };
 
-  const handleDeleteClick = (group: Group) => {
+  const handleDeleteClick = async (group: Group) => {
     setDeletingGroup(group);
+    
+    // Get counts of related data to show in modal
+    try {
+      const auctions = await getAuctions(user!.uid, group.id);
+      let totalPayments = 0;
+      
+      // Count payments for all auctions
+      for (const auction of auctions) {
+        const payments = await getPayments(user!.uid, { auctionId: auction.id });
+        totalPayments += payments.length;
+      }
+      
+      setDeletionStats({
+        auctionCount: auctions.length,
+        paymentCount: totalPayments
+      });
+    } catch (error) {
+      console.error("Error fetching deletion stats:", error);
+      setDeletionStats({ auctionCount: 0, paymentCount: 0 });
+    }
+    
     setShowDeleteModal(true);
   };
 
@@ -119,10 +141,24 @@ export default function GroupsPage() {
     if (!deletingGroup) return;
 
     try {
+      const stats = deletionStats || { auctionCount: 0, paymentCount: 0 };
+      
+      // Delete group and all related data (auctions, payments, payment logs, members)
       await deleteGroup(user!.uid, deletingGroup.id);
-      toast.success("Group deleted successfully");
+      
+      // Show success message with deletion summary
+      if (stats.auctionCount > 0 || stats.paymentCount > 0) {
+        toast.success(
+          `Group deleted successfully. ${stats.auctionCount} auction(s) and ${stats.paymentCount} payment(s) have been removed.`,
+          { duration: 5000 }
+        );
+      } else {
+        toast.success("Group deleted successfully");
+      }
+      
       setShowDeleteModal(false);
       setDeletingGroup(null);
+      setDeletionStats(null);
       loadGroups();
     } catch (error: any) {
       console.error("Error deleting group:", error);
@@ -460,9 +496,25 @@ export default function GroupsPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
             <h2 className="text-2xl font-bold text-gray-800 mb-4">Delete Group</h2>
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to delete <strong>{deletingGroup.groupName}</strong>? This
-              action cannot be undone.
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to delete <strong>{deletingGroup.groupName}</strong>?
+              <br /><br />
+              <strong className="text-red-600">This will permanently delete:</strong>
+              <br />• The group record
+              <br />• All group members
+              {deletionStats && deletionStats.auctionCount > 0 && (
+                <>
+                  <br />• {deletionStats.auctionCount} auction(s) related to this group
+                </>
+              )}
+              {deletionStats && deletionStats.paymentCount > 0 && (
+                <>
+                  <br />• {deletionStats.paymentCount} payment(s) related to those auctions
+                  <br />• All payment received records (payment logs) for those payments
+                </>
+              )}
+              <br /><br />
+              This action cannot be undone.
             </p>
             <div className="flex gap-3">
               <button onClick={handleDelete} className="btn-danger flex-1">
@@ -472,6 +524,7 @@ export default function GroupsPage() {
                 onClick={() => {
                   setShowDeleteModal(false);
                   setDeletingGroup(null);
+                  setDeletionStats(null);
                 }}
                 className="btn-secondary flex-1"
               >

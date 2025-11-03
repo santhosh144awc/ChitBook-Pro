@@ -126,26 +126,79 @@ export const updateGroup = async (
   });
 };
 
+/**
+ * Deletes a group and all related data in cascade:
+ * 1. All payment logs (payment received records) for payments related to auctions in this group
+ * 2. All payment entries related to auctions in this group
+ * 3. All auctions related to this group
+ * 4. All group members
+ * 5. The group itself
+ * 
+ * Flow: Group → Auctions → Payments → Payment Logs
+ */
 export const deleteGroup = async (
   userId: string,
   groupId: string
 ): Promise<void> => {
-  // Get all group members first
+  // Step 1: Get all auctions related to this group
+  const auctions = await getAuctions(userId, groupId);
+  
+  // Step 2: Delete all payments and payment logs for each auction
+  for (const auction of auctions) {
+    await deletePaymentsByAuction(userId, auction.id);
+  }
+  
+  // Step 3: Delete all auctions in batches (Firestore batch limit is 500)
+  let batch = writeBatch(db);
+  let operationCount = 0;
+  
+  for (const auction of auctions) {
+    if (operationCount >= 500) {
+      await batch.commit();
+      batch = writeBatch(db); // Create new batch
+      operationCount = 0;
+    }
+    const auctionRef = doc(db, getUserCollection(userId, "auctions"), auction.id);
+    batch.delete(auctionRef);
+    operationCount++;
+  }
+  
+  // Step 4: Get all group members
   const members = await getGroupMembers(userId, groupId);
   
-  // Delete all group members
-  const batch = writeBatch(db);
-  members.forEach((member) => {
+  // Step 5: Delete all group members
+  for (const member of members) {
+    if (operationCount >= 500) {
+      await batch.commit();
+      batch = writeBatch(db); // Create new batch
+      operationCount = 0;
+    }
     const memberRef = doc(db, getUserCollection(userId, "groupMembers"), member.id);
     batch.delete(memberRef);
-  });
+    operationCount++;
+  }
   
-  // Delete the group
+  // Step 6: Delete the group
+  if (operationCount >= 500) {
+    await batch.commit();
+    batch = writeBatch(db); // Create new batch
+    operationCount = 0;
+  }
   const groupRef = doc(db, getUserCollection(userId, "groups"), groupId);
   batch.delete(groupRef);
+  operationCount++;
   
-  // Commit all deletions
-  await batch.commit();
+  // Step 7: Commit remaining operations
+  if (operationCount > 0) {
+    await batch.commit();
+  }
+  
+  // At this point, all related data has been deleted:
+  // - All payment logs for payments related to auctions in this group
+  // - All payment entries for auctions in this group
+  // - All auctions in this group
+  // - All group members
+  // - The group itself
 };
 
 // Group Members
@@ -193,6 +246,33 @@ export const getGroupMember = async (
   return docSnap.exists()
     ? ({ id: docSnap.id, ...docSnap.data() } as GroupMember)
     : null;
+};
+
+/**
+ * Get all group memberships for a specific client
+ * Used to check which groups a client belongs to before deletion
+ */
+export const getGroupMembersByClientId = async (
+  userId: string,
+  clientId: string
+): Promise<GroupMember[]> => {
+  try {
+    const collectionRef = collection(db, getUserCollection(userId, "groupMembers"));
+    const q = query(collectionRef, where("clientId", "==", clientId));
+    const snapshot = await getDocs(q);
+    const members = snapshot.docs.map(
+      (doc) => ({ id: doc.id, ...doc.data() } as GroupMember)
+    );
+    // Sort by createdAt descending
+    return members.sort((a, b) => {
+      const aTime = a.createdAt?.toMillis() || 0;
+      const bTime = b.createdAt?.toMillis() || 0;
+      return bTime - aTime; // Descending order (newest first)
+    });
+  } catch (error) {
+    console.error("Error in getGroupMembersByClientId:", error);
+    throw error;
+  }
 };
 
 export const createGroupMember = async (
@@ -393,28 +473,38 @@ export const deletePayment = async (
   await deleteDoc(docRef);
 };
 
+/**
+ * Deletes all data related to an auction:
+ * 1. All payment logs (payment received records) for payments related to the auction
+ * 2. All payment entries related to the auction
+ * 
+ * This ensures complete cleanup when an auction is deleted.
+ */
 export const deletePaymentsByAuction = async (
   userId: string,
   auctionId: string
 ): Promise<void> => {
+  // Step 1: Get all payment entries related to this auction
   const payments = await getPayments(userId, { auctionId });
   
   if (payments.length === 0) {
-    return; // No payments to delete
+    return; // No payments to delete - nothing to do
   }
   
-  // Get all payment logs for these payments
+  // Step 2: Get all payment logs (payment received records) for these payments
+  // Payment logs reference payments, so we need to get them before deleting payments
   const allPaymentLogs: PaymentLog[] = [];
   for (const payment of payments) {
     const logs = await getPaymentLogs(userId, { paymentId: payment.id });
     allPaymentLogs.push(...logs);
   }
   
-  // Delete payment logs and payments in batches (Firestore batch limit is 500)
+  // Step 3: Delete everything in batches (Firestore batch limit is 500 operations)
   let batch = writeBatch(db);
   let operationCount = 0;
   
-  // Delete payment logs first
+  // Step 3a: Delete payment logs first (since they reference payments)
+  // These are the "payment received" records - all payment history
   for (const log of allPaymentLogs) {
     if (operationCount >= 500) {
       await batch.commit();
@@ -426,7 +516,7 @@ export const deletePaymentsByAuction = async (
     operationCount++;
   }
   
-  // Delete payments
+  // Step 3b: Delete payment entries (these reference the auction)
   for (const payment of payments) {
     if (operationCount >= 500) {
       await batch.commit();
@@ -438,10 +528,13 @@ export const deletePaymentsByAuction = async (
     operationCount++;
   }
   
-  // Commit remaining operations
+  // Step 4: Commit any remaining operations
   if (operationCount > 0) {
     await batch.commit();
   }
+  
+  // At this point, all payment logs and payments related to the auction are deleted
+  // The auction itself should be deleted separately after calling this function
 };
 
 // Payment Logs
@@ -463,9 +556,9 @@ export const getPaymentLogs = async (
     q = query(q, where("paymentId", "==", filters.paymentId));
   }
 
-  // Avoid index requirement by not using orderBy when filtering by clientId
+  // Avoid index requirement by not using orderBy when filtering by clientId or paymentId
   // Instead, we'll sort manually after fetching
-  if (!filters?.clientId) {
+  if (!filters?.clientId && !filters?.paymentId) {
     q = query(q, orderBy("paymentDate", "desc"));
   }
 
@@ -475,8 +568,8 @@ export const getPaymentLogs = async (
     (doc) => ({ id: doc.id, ...doc.data() } as PaymentLog)
   );
 
-  // Sort manually if we filtered by clientId to avoid index requirement
-  if (filters?.clientId) {
+  // Sort manually if we filtered by clientId or paymentId to avoid index requirement
+  if (filters?.clientId || filters?.paymentId) {
     logs.sort((a, b) => {
       const aTime = a.paymentDate.toMillis();
       const bTime = b.paymentDate.toMillis();

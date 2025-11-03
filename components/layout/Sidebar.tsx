@@ -12,8 +12,8 @@ const menuItems = [
   { name: "Bulk Pay", href: "/bulk-pay", icon: "💳" },
   { name: "Clients", href: "/clients", icon: "👥" },
   { name: "Groups", href: "/groups", icon: "🏢" },
-  { name: "Memberships", href: "/memberships", icon: "🔗" },
   { name: "Rollback", href: "/rollback", icon: "↩️" },
+  { name: "Memberships", href: "/memberships", icon: "🔗" },
   { name: "Settings", href: "/settings", icon: "⚙️" },
 ];
 

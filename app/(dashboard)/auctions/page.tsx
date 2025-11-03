@@ -419,21 +419,24 @@ export default function AuctionsPage() {
     if (!deletingAuction) return;
 
     try {
-      // Get payments count for confirmation message
+      // Step 1: Get all payments related to this auction to count them
       const payments = await getPayments(user!.uid, { auctionId: deletingAuction.id });
       const paymentCount = payments.length;
 
-      // Delete all associated payments and payment logs first
+      // Step 2: Delete all related data (payment logs and payment entries)
+      // This function deletes:
+      // - All payment logs (payment received records) for payments related to this auction
+      // - All payment entries related to this auction
       if (paymentCount > 0) {
         await deletePaymentsByAuction(user!.uid, deletingAuction.id);
       }
 
-      // Delete auction
+      // Step 3: Delete the auction itself
       await deleteAuction(user!.uid, deletingAuction.id);
 
-      // Show success message with payment deletion info
+      // Step 4: Show success message
       if (paymentCount > 0) {
-        toast.success(`Auction and ${paymentCount} related payment(s) deleted successfully`);
+        toast.success(`Auction deleted successfully. All ${paymentCount} related payment(s) and payment records have been removed.`);
       } else {
         toast.success("Auction deleted successfully");
       }
@@ -808,8 +811,14 @@ export default function AuctionsPage() {
             <h2 className="text-2xl font-bold text-gray-800 mb-4">Delete Auction</h2>
             <p className="text-gray-600 mb-6">
               Are you sure you want to delete the auction for{" "}
-              <strong>{deletingAuction.groupName}</strong> - {deletingAuction.chitMonth}? This will
-              also delete all associated payment records.
+              <strong>{deletingAuction.groupName}</strong> - {deletingAuction.chitMonth}?
+              <br /><br />
+              <strong className="text-red-600">This will permanently delete:</strong>
+              <br />• The auction record
+              <br />• All payment entries related to this auction
+              <br />• All payment received records (payment logs) for those payments
+              <br /><br />
+              This action cannot be undone.
             </p>
             <div className="flex gap-3">
               <button onClick={handleDelete} className="btn-danger flex-1">
