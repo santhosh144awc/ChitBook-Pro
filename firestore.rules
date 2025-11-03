@@ -6,26 +6,34 @@ service cloud.firestore {
       return request.auth != null;
     }
     
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.admin == true;
+    }
+    
     // Helper function to check if user owns the data
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
-    // Users can only access their own data
+    // Users can access their own data OR admins can access any user's data
     match /users/{userId}/{document=**} {
-      allow read, write: if isOwner(userId);
+      // Allow read if user owns the data OR user is admin
+      allow read: if isOwner(userId) || isAdmin();
+      // Allow write (create, update, delete) if user owns the data OR user is admin
+      allow write: if isOwner(userId) || isAdmin();
     }
     
-    // User Approvals - authenticated users can read their own, admins can manage all
+    // User Approvals - admins can manage all, users can create their own
     match /userApprovals/{approvalId} {
-      // Users can read their own approval record or all approvals (for admin page)
-      // In production, you should add an admin check: request.auth.token.admin == true
-      allow read: if isAuthenticated();
-      // Allow all authenticated users to create their own approval (during registration)
+      // Admins can read all, users can read their own
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      // Users can create their own approval request during registration
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      // For now, allow any authenticated user to approve/reject (you can add admin check later)
-      // In production: allow update: if isAuthenticated() && request.auth.token.admin == true;
-      allow update: if isAuthenticated();
+      // Only admins can update approvals (approve/reject users)
+      allow update: if isAuthenticated() && isAdmin();
+      // Only admins can delete approval records
+      allow delete: if isAuthenticated() && isAdmin();
     }
     
     // Deny all other access

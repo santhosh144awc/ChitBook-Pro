@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -87,6 +87,15 @@ export default function GroupDetailPage() {
 
   // Calculate total member count (sum of chitCount)
   const totalMemberCount = members.reduce((sum, m) => sum + m.chitCount, 0);
+
+  // Sort auctions by auction date (oldest first) for serial number calculation
+  const sortedAuctions = useMemo(() => {
+    return [...auctions].sort((a, b) => {
+      const dateA = a.auctionDate.toMillis();
+      const dateB = b.auctionDate.toMillis();
+      return dateA - dateB; // Ascending order (oldest first)
+    });
+  }, [auctions]);
 
   const handleOpenAddModal = () => {
     setFormData({ clientId: "", chitCount: "1", notes: "" });
@@ -331,7 +340,7 @@ export default function GroupDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {auctions.map((auction, index) => (
+                    {sortedAuctions.map((auction, index) => (
                       <tr key={auction.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-3 px-4">{index + 1}</td>
                         <td className="py-3 px-4">{formatDate(auction.auctionDate)}</td>
