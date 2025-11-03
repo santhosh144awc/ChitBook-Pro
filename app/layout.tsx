@@ -7,7 +7,7 @@ import { Toaster } from "react-hot-toast";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "ChitBook Pro - Chit Fund Management",
+  title: "Chit Manager - Modern Chit Fund Management",
   description: "Complete chit fund management application",
 };
 

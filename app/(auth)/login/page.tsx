@@ -37,9 +37,16 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-500 via-primary-600 to-secondary-600 p-4">
       <div className="max-w-md w-full">
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+        <div className="bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl p-8 border border-gray-100/50">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">ChitBook Pro</h1>
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="w-14 h-14 bg-gradient-to-br from-primary-400 to-primary-600 rounded-2xl flex items-center justify-center shadow-lg">
+                <span className="text-2xl font-bold text-white">CM</span>
+              </div>
+            </div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent mb-2">
+              Chit Manager
+            </h1>
             <p className="text-gray-600">Sign in to your account</p>
           </div>
 

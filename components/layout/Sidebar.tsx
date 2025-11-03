@@ -22,13 +22,21 @@ export default function Sidebar() {
   const { signOut } = useAuth();
 
   return (
-    <div className="w-64 bg-gradient-to-b from-primary-700 to-primary-900 text-white min-h-screen flex flex-col">
-      <div className="p-6 border-b border-primary-600">
-        <h1 className="text-2xl font-bold">ChitBook Pro</h1>
-        <p className="text-primary-200 text-sm mt-1">Chit Fund Management</p>
+    <div className="w-64 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white min-h-screen flex flex-col shadow-2xl border-r border-slate-700/50">
+      <div className="p-6 border-b border-slate-700/50">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-primary-400 to-primary-600 rounded-xl flex items-center justify-center shadow-lg">
+            <span className="text-xl font-bold">CM</span>
+          </div>
+          <div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-white to-slate-200 bg-clip-text text-transparent">
+              Chit Manager
+            </h1>
+          </div>
+        </div>
       </div>
       
-      <nav className="flex-1 p-4 space-y-2">
+      <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
         {menuItems.map((item) => {
           const isActive = pathname === item.href || 
             (item.href !== "/" && pathname?.startsWith(item.href));
@@ -37,26 +45,28 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+              className={`group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
                 isActive
-                  ? "bg-white text-primary-700 font-semibold"
-                  : "hover:bg-primary-600 text-primary-100"
+                  ? "bg-gradient-to-r from-primary-500 to-primary-600 text-white font-semibold shadow-lg shadow-primary-500/30"
+                  : "hover:bg-slate-700/50 text-slate-200 hover:text-white"
               }`}
             >
-              <span className="text-xl">{item.icon}</span>
-              <span>{item.name}</span>
+              <span className={`text-lg transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>
+                {item.icon}
+              </span>
+              <span className="text-sm">{item.name}</span>
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t border-primary-600">
+      <div className="p-4 border-t border-slate-700/50">
         <button
           onClick={signOut}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-primary-600 text-primary-100 transition-colors"
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-700/50 text-slate-200 hover:text-white transition-all duration-200 group"
         >
-          <span className="text-xl">🚪</span>
-          <span>Sign Out</span>
+          <span className="text-lg transition-transform duration-200 group-hover:scale-110">🚪</span>
+          <span className="text-sm">Sign Out</span>
         </button>
       </div>
     </div>

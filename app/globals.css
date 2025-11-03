@@ -4,36 +4,40 @@
 
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-gradient-to-br from-gray-50 via-white to-gray-50 text-gray-900 antialiased;
+  }
+  
+  * {
+    @apply border-gray-200;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+    @apply bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white font-medium py-2.5 px-5 rounded-xl transition-all duration-200 shadow-lg shadow-primary-500/30 hover:shadow-primary-500/50 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
   }
   
   .btn-secondary {
-    @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+    @apply bg-white hover:bg-gray-50 text-gray-700 font-medium py-2.5 px-5 rounded-xl transition-all duration-200 shadow-md shadow-gray-200/50 hover:shadow-gray-300/50 border border-gray-200 hover:border-gray-300 hover:scale-[1.02] active:scale-[0.98];
   }
   
   .btn-danger {
-    @apply bg-danger-600 hover:bg-danger-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+    @apply bg-gradient-to-r from-danger-500 to-danger-600 hover:from-danger-600 hover:to-danger-700 text-white font-medium py-2.5 px-5 rounded-xl transition-all duration-200 shadow-lg shadow-danger-500/30 hover:shadow-danger-500/50 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
   }
   
   .btn-success {
-    @apply bg-success-600 hover:bg-success-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+    @apply bg-gradient-to-r from-success-500 to-success-600 hover:from-success-600 hover:to-success-700 text-white font-medium py-2.5 px-5 rounded-xl transition-all duration-200 shadow-lg shadow-success-500/30 hover:shadow-success-500/50 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
   }
   
   .input-field {
-    @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all;
+    @apply w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500/50 focus:border-primary-400 outline-none transition-all duration-200 bg-white hover:border-gray-400 shadow-sm hover:shadow-md focus:shadow-lg;
   }
   
   .card {
-    @apply bg-white rounded-xl shadow-md p-6 border border-gray-100;
+    @apply bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg shadow-gray-200/50 p-6 border border-gray-100/50 hover:shadow-xl hover:shadow-gray-300/50 transition-all duration-300;
   }
   
   .card-colored {
-    @apply rounded-xl shadow-lg p-6 text-white;
+    @apply rounded-2xl shadow-xl p-6 text-white backdrop-blur-sm;
   }
 }

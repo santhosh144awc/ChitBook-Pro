@@ -5,10 +5,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   getPayments,
   getClients,
+  getGroups,
   getGroupMembers,
   getPaymentLogs,
 } from "@/lib/firestore";
-import type { Payment, Client, PaymentLog } from "@/types";
+import type { Payment, Client, PaymentLog, Group } from "@/types";
 import toast from "react-hot-toast";
 import { formatDate, formatCurrency, isOverdue, getCurrentMonth } from "@/lib/utils";
 import Pagination from "@/components/common/Pagination";
@@ -20,7 +21,7 @@ export default function ReportsPage() {
 
   // Pending Payments Report
   const [allPayments, setAllPayments] = useState<Payment[]>([]);
-  const [allGroups, setAllGroups] = useState<any[]>([]);
+  const [allGroups, setAllGroups] = useState<Group[]>([]);
   const [pendingFilters, setPendingFilters] = useState({
     groupId: "",
     daysOverdue: "",
@@ -38,8 +39,8 @@ export default function ReportsPage() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
-  const [clientGroups, setClientGroups] = useState<any[]>([]);
-  const [clientPendingByGroup, setClientPendingByGroup] = useState<any[]>([]);
+  const [clientGroups, setClientGroups] = useState<Array<{ groupName: string; chitCount: number }>>([]);
+  const [clientPendingByGroup, setClientPendingByGroup] = useState<Array<{ groupName: string; totalPending: number }>>([]);
   const [clientPaymentHistory, setClientPaymentHistory] = useState<PaymentLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -60,7 +61,7 @@ export default function ReportsPage() {
       setLoading(true);
       const [payments, groups, clients] = await Promise.all([
         getPayments(user!.uid),
-        import("@/lib/firestore").then((m) => m.getGroups(user!.uid)),
+        getGroups(user!.uid),
         getClients(user!.uid),
       ]);
 
@@ -263,7 +264,6 @@ export default function ReportsPage() {
       setClientGroups(
         clientMemberships.map((m) => ({
           groupName: m.groupName,
-          groupId: m.groupId,
           chitCount: m.chitCount,
         }))
       );
