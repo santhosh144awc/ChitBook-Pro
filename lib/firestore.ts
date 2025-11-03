@@ -398,12 +398,50 @@ export const deletePaymentsByAuction = async (
   auctionId: string
 ): Promise<void> => {
   const payments = await getPayments(userId, { auctionId });
-  const batch = writeBatch(db);
-  payments.forEach((payment) => {
-    const docRef = doc(db, getUserCollection(userId, "payments"), payment.id);
-    batch.delete(docRef);
-  });
-  await batch.commit();
+  
+  if (payments.length === 0) {
+    return; // No payments to delete
+  }
+  
+  // Get all payment logs for these payments
+  const allPaymentLogs: PaymentLog[] = [];
+  for (const payment of payments) {
+    const logs = await getPaymentLogs(userId, { paymentId: payment.id });
+    allPaymentLogs.push(...logs);
+  }
+  
+  // Delete payment logs and payments in batches (Firestore batch limit is 500)
+  let batch = writeBatch(db);
+  let operationCount = 0;
+  
+  // Delete payment logs first
+  for (const log of allPaymentLogs) {
+    if (operationCount >= 500) {
+      await batch.commit();
+      batch = writeBatch(db); // Create new batch
+      operationCount = 0;
+    }
+    const logRef = doc(db, getUserCollection(userId, "paymentLogs"), log.id);
+    batch.delete(logRef);
+    operationCount++;
+  }
+  
+  // Delete payments
+  for (const payment of payments) {
+    if (operationCount >= 500) {
+      await batch.commit();
+      batch = writeBatch(db); // Create new batch
+      operationCount = 0;
+    }
+    const paymentRef = doc(db, getUserCollection(userId, "payments"), payment.id);
+    batch.delete(paymentRef);
+    operationCount++;
+  }
+  
+  // Commit remaining operations
+  if (operationCount > 0) {
+    await batch.commit();
+  }
 };
 
 // Payment Logs

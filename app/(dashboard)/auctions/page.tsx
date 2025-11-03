@@ -419,24 +419,25 @@ export default function AuctionsPage() {
     if (!deletingAuction) return;
 
     try {
-      // Check if any payments exist with amountPaid > 0
+      // Get payments count for confirmation message
       const payments = await getPayments(user!.uid, { auctionId: deletingAuction.id });
-      const hasPayments = payments.some((p) => p.amountPaid > 0);
+      const paymentCount = payments.length;
 
-      if (hasPayments) {
-        toast.error("Cannot delete auction with existing payments");
-        setShowDeleteModal(false);
-        setDeletingAuction(null);
-        return;
+      // Delete all associated payments and payment logs first
+      if (paymentCount > 0) {
+        await deletePaymentsByAuction(user!.uid, deletingAuction.id);
       }
-
-      // Delete all associated payments
-      await deletePaymentsByAuction(user!.uid, deletingAuction.id);
 
       // Delete auction
       await deleteAuction(user!.uid, deletingAuction.id);
 
-      toast.success("Auction deleted successfully");
+      // Show success message with payment deletion info
+      if (paymentCount > 0) {
+        toast.success(`Auction and ${paymentCount} related payment(s) deleted successfully`);
+      } else {
+        toast.success("Auction deleted successfully");
+      }
+
       setShowDeleteModal(false);
       setDeletingAuction(null);
       loadData();
