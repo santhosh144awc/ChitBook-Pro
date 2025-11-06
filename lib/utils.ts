@@ -66,6 +66,12 @@ export const getCurrentMonth = (): string => {
 };
 
 // Calculate auction amounts
+// Auction calculation update: perMemberContribution is calculated by dividing totalCollectionAmount 
+// by a static value of 20, regardless of the actual number of members in the group.
+// Formula: perMemberContribution = (payoutAmount + agentCommission) / 20
+// Example: If chitValue=500000, bidAmount=100000, commission=3%:
+//   payoutAmount = 400000, agentCommission = 15000, totalCollectionAmount = 415000
+//   perMemberContribution = 415000 / 20 = 20750
 export const calculateAuctionAmounts = (
   chitValue: number,
   bidAmount: number,
@@ -75,7 +81,7 @@ export const calculateAuctionAmounts = (
   const payoutAmount = chitValue - bidAmount;
   const agentCommission = (chitValue * agentCommissionPercent) / 100;
   const totalCollectionAmount = payoutAmount + agentCommission;
-  const perMemberContribution = totalCollectionAmount / memberCount;
+  const perMemberContribution = totalCollectionAmount / 20; // Divide by static 20, not based on member count
 
   return {
     payoutAmount,
