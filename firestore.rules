@@ -11,17 +11,39 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.token.admin == true;
     }
     
-    // Helper function to check if user owns the data
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    // Shared collections - all authenticated users can access
+    // Clients, Groups, Group Members, Auctions, Payments, Payment Logs
+    match /clients/{document=**} {
+      allow read, write: if isAuthenticated();
     }
     
+    match /groups/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /groupMembers/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /auctions/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /payments/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /paymentLogs/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Legacy user-specific data paths (for migration purposes)
     // Users can access their own data OR admins can access any user's data
     match /users/{userId}/{document=**} {
       // Allow read if user owns the data OR user is admin
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       // Allow write (create, update, delete) if user owns the data OR user is admin
-      allow write: if isOwner(userId) || isAdmin();
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
     }
     
     // User Approvals - admins can manage all, users can create their own

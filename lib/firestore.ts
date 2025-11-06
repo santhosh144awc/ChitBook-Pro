@@ -22,14 +22,14 @@ import type {
   PaymentLog,
 } from "@/types";
 
-// Helper to get user collection path
-const getUserCollection = (userId: string, collectionName: string) =>
-  `users/${userId}/${collectionName}`;
+// Shared collections - all authenticated users can access the same data
+// userId parameter is kept for backward compatibility but is ignored
+const getSharedCollection = (collectionName: string) => collectionName;
 
 // Clients
 export const getClients = async (userId: string): Promise<Client[]> => {
   const q = query(
-    collection(db, getUserCollection(userId, "clients")),
+    collection(db, getSharedCollection("clients")),
     orderBy("createdAt", "desc")
   );
   const snapshot = await getDocs(q);
@@ -42,7 +42,7 @@ export const getClient = async (
   userId: string,
   clientId: string
 ): Promise<Client | null> => {
-  const docRef = doc(db, getUserCollection(userId, "clients"), clientId);
+  const docRef = doc(db, getSharedCollection("clients"), clientId);
   const docSnap = await getDoc(docRef);
   return docSnap.exists()
     ? ({ id: docSnap.id, ...docSnap.data() } as Client)
@@ -53,7 +53,7 @@ export const createClient = async (
   userId: string,
   data: Omit<Client, "id" | "createdAt" | "updatedAt">
 ): Promise<string> => {
-  const docRef = await addDoc(collection(db, getUserCollection(userId, "clients")), {
+  const docRef = await addDoc(collection(db, getSharedCollection("clients")), {
     ...data,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
@@ -66,7 +66,7 @@ export const updateClient = async (
   clientId: string,
   data: Partial<Omit<Client, "id" | "createdAt" | "updatedAt">>
 ): Promise<void> => {
-  const docRef = doc(db, getUserCollection(userId, "clients"), clientId);
+  const docRef = doc(db, getSharedCollection("clients"), clientId);
   await updateDoc(docRef, {
     ...data,
     updatedAt: Timestamp.now(),
@@ -77,14 +77,14 @@ export const deleteClient = async (
   userId: string,
   clientId: string
 ): Promise<void> => {
-  const docRef = doc(db, getUserCollection(userId, "clients"), clientId);
+  const docRef = doc(db, getSharedCollection("clients"), clientId);
   await deleteDoc(docRef);
 };
 
 // Groups
 export const getGroups = async (userId: string): Promise<Group[]> => {
   const q = query(
-    collection(db, getUserCollection(userId, "groups")),
+    collection(db, getSharedCollection("groups")),
     orderBy("createdAt", "desc")
   );
   const snapshot = await getDocs(q);
@@ -95,7 +95,7 @@ export const getGroup = async (
   userId: string,
   groupId: string
 ): Promise<Group | null> => {
-  const docRef = doc(db, getUserCollection(userId, "groups"), groupId);
+  const docRef = doc(db, getSharedCollection("groups"), groupId);
   const docSnap = await getDoc(docRef);
   return docSnap.exists()
     ? ({ id: docSnap.id, ...docSnap.data() } as Group)
@@ -106,7 +106,7 @@ export const createGroup = async (
   userId: string,
   data: Omit<Group, "id" | "createdAt" | "updatedAt">
 ): Promise<string> => {
-  const docRef = await addDoc(collection(db, getUserCollection(userId, "groups")), {
+  const docRef = await addDoc(collection(db, getSharedCollection("groups")), {
     ...data,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
@@ -119,7 +119,7 @@ export const updateGroup = async (
   groupId: string,
   data: Partial<Omit<Group, "id" | "createdAt" | "updatedAt">>
 ): Promise<void> => {
-  const docRef = doc(db, getUserCollection(userId, "groups"), groupId);
+  const docRef = doc(db, getSharedCollection("groups"), groupId);
   await updateDoc(docRef, {
     ...data,
     updatedAt: Timestamp.now(),
@@ -158,7 +158,7 @@ export const deleteGroup = async (
       batch = writeBatch(db); // Create new batch
       operationCount = 0;
     }
-    const auctionRef = doc(db, getUserCollection(userId, "auctions"), auction.id);
+    const auctionRef = doc(db, getSharedCollection("auctions"), auction.id);
     batch.delete(auctionRef);
     operationCount++;
   }
@@ -173,7 +173,7 @@ export const deleteGroup = async (
       batch = writeBatch(db); // Create new batch
       operationCount = 0;
     }
-    const memberRef = doc(db, getUserCollection(userId, "groupMembers"), member.id);
+    const memberRef = doc(db, getSharedCollection("groupMembers"), member.id);
     batch.delete(memberRef);
     operationCount++;
   }
@@ -184,7 +184,7 @@ export const deleteGroup = async (
     batch = writeBatch(db); // Create new batch
     operationCount = 0;
   }
-  const groupRef = doc(db, getUserCollection(userId, "groups"), groupId);
+  const groupRef = doc(db, getSharedCollection("groups"), groupId);
   batch.delete(groupRef);
   operationCount++;
   
@@ -207,7 +207,7 @@ export const getGroupMembers = async (
   groupId?: string
 ): Promise<GroupMember[]> => {
   try {
-    const collectionRef = collection(db, getUserCollection(userId, "groupMembers"));
+    const collectionRef = collection(db, getSharedCollection("groupMembers"));
     let q;
     
     if (groupId) {
@@ -241,7 +241,7 @@ export const getGroupMember = async (
   userId: string,
   memberId: string
 ): Promise<GroupMember | null> => {
-  const docRef = doc(db, getUserCollection(userId, "groupMembers"), memberId);
+  const docRef = doc(db, getSharedCollection("groupMembers"), memberId);
   const docSnap = await getDoc(docRef);
   return docSnap.exists()
     ? ({ id: docSnap.id, ...docSnap.data() } as GroupMember)
@@ -257,7 +257,7 @@ export const getGroupMembersByClientId = async (
   clientId: string
 ): Promise<GroupMember[]> => {
   try {
-    const collectionRef = collection(db, getUserCollection(userId, "groupMembers"));
+    const collectionRef = collection(db, getSharedCollection("groupMembers"));
     const q = query(collectionRef, where("clientId", "==", clientId));
     const snapshot = await getDocs(q);
     const members = snapshot.docs.map(
@@ -280,7 +280,7 @@ export const createGroupMember = async (
   data: Omit<GroupMember, "id" | "createdAt" | "updatedAt">
 ): Promise<string> => {
   const docRef = await addDoc(
-    collection(db, getUserCollection(userId, "groupMembers")),
+    collection(db, getSharedCollection("groupMembers")),
     {
       ...data,
       createdAt: Timestamp.now(),
@@ -295,7 +295,7 @@ export const updateGroupMember = async (
   memberId: string,
   data: Partial<Omit<GroupMember, "id" | "createdAt" | "updatedAt">>
 ): Promise<void> => {
-  const docRef = doc(db, getUserCollection(userId, "groupMembers"), memberId);
+  const docRef = doc(db, getSharedCollection("groupMembers"), memberId);
   await updateDoc(docRef, {
     ...data,
     updatedAt: Timestamp.now(),
@@ -306,7 +306,7 @@ export const deleteGroupMember = async (
   userId: string,
   memberId: string
 ): Promise<void> => {
-  const docRef = doc(db, getUserCollection(userId, "groupMembers"), memberId);
+  const docRef = doc(db, getSharedCollection("groupMembers"), memberId);
   await deleteDoc(docRef);
 };
 
@@ -315,7 +315,7 @@ export const getAuctions = async (
   userId: string,
   groupId?: string
 ): Promise<Auction[]> => {
-  const collectionRef = collection(db, getUserCollection(userId, "auctions"));
+  const collectionRef = collection(db, getSharedCollection("auctions"));
   let q;
   
   if (groupId) {
@@ -345,7 +345,7 @@ export const getAuction = async (
   userId: string,
   auctionId: string
 ): Promise<Auction | null> => {
-  const docRef = doc(db, getUserCollection(userId, "auctions"), auctionId);
+  const docRef = doc(db, getSharedCollection("auctions"), auctionId);
   const docSnap = await getDoc(docRef);
   return docSnap.exists()
     ? ({ id: docSnap.id, ...docSnap.data() } as Auction)
@@ -357,7 +357,7 @@ export const createAuction = async (
   data: Omit<Auction, "id" | "createdAt" | "updatedAt">
 ): Promise<string> => {
   const docRef = await addDoc(
-    collection(db, getUserCollection(userId, "auctions")),
+    collection(db, getSharedCollection("auctions")),
     {
       ...data,
       createdAt: Timestamp.now(),
@@ -372,7 +372,7 @@ export const updateAuction = async (
   auctionId: string,
   data: Partial<Omit<Auction, "id" | "createdAt" | "updatedAt">>
 ): Promise<void> => {
-  const docRef = doc(db, getUserCollection(userId, "auctions"), auctionId);
+  const docRef = doc(db, getSharedCollection("auctions"), auctionId);
   await updateDoc(docRef, {
     ...data,
     updatedAt: Timestamp.now(),
@@ -383,7 +383,7 @@ export const deleteAuction = async (
   userId: string,
   auctionId: string
 ): Promise<void> => {
-  const docRef = doc(db, getUserCollection(userId, "auctions"), auctionId);
+  const docRef = doc(db, getSharedCollection("auctions"), auctionId);
   await deleteDoc(docRef);
 };
 
@@ -397,7 +397,7 @@ export const getPayments = async (
     auctionId?: string;
   }
 ): Promise<Payment[]> => {
-  const collectionRef = collection(db, getUserCollection(userId, "payments"));
+  const collectionRef = collection(db, getSharedCollection("payments"));
   let q = query(collectionRef);
 
   if (filters?.clientId) {
@@ -431,7 +431,7 @@ export const getPayment = async (
   userId: string,
   paymentId: string
 ): Promise<Payment | null> => {
-  const docRef = doc(db, getUserCollection(userId, "payments"), paymentId);
+  const docRef = doc(db, getSharedCollection("payments"), paymentId);
   const docSnap = await getDoc(docRef);
   return docSnap.exists()
     ? ({ id: docSnap.id, ...docSnap.data() } as Payment)
@@ -443,7 +443,7 @@ export const createPayment = async (
   data: Omit<Payment, "id" | "createdAt" | "updatedAt">
 ): Promise<string> => {
   const docRef = await addDoc(
-    collection(db, getUserCollection(userId, "payments")),
+    collection(db, getSharedCollection("payments")),
     {
       ...data,
       createdAt: Timestamp.now(),
@@ -458,7 +458,7 @@ export const updatePayment = async (
   paymentId: string,
   data: Partial<Omit<Payment, "id" | "createdAt" | "updatedAt">>
 ): Promise<void> => {
-  const docRef = doc(db, getUserCollection(userId, "payments"), paymentId);
+  const docRef = doc(db, getSharedCollection("payments"), paymentId);
   await updateDoc(docRef, {
     ...data,
     updatedAt: Timestamp.now(),
@@ -469,7 +469,7 @@ export const deletePayment = async (
   userId: string,
   paymentId: string
 ): Promise<void> => {
-  const docRef = doc(db, getUserCollection(userId, "payments"), paymentId);
+  const docRef = doc(db, getSharedCollection("payments"), paymentId);
   await deleteDoc(docRef);
 };
 
@@ -511,7 +511,7 @@ export const deletePaymentsByAuction = async (
       batch = writeBatch(db); // Create new batch
       operationCount = 0;
     }
-    const logRef = doc(db, getUserCollection(userId, "paymentLogs"), log.id);
+    const logRef = doc(db, getSharedCollection("paymentLogs"), log.id);
     batch.delete(logRef);
     operationCount++;
   }
@@ -523,7 +523,7 @@ export const deletePaymentsByAuction = async (
       batch = writeBatch(db); // Create new batch
       operationCount = 0;
     }
-    const paymentRef = doc(db, getUserCollection(userId, "payments"), payment.id);
+    const paymentRef = doc(db, getSharedCollection("payments"), payment.id);
     batch.delete(paymentRef);
     operationCount++;
   }
@@ -546,7 +546,7 @@ export const getPaymentLogs = async (
     month?: string; // YYYY-MM format
   }
 ): Promise<PaymentLog[]> => {
-  const collectionRef = collection(db, getUserCollection(userId, "paymentLogs"));
+  const collectionRef = collection(db, getSharedCollection("paymentLogs"));
   let q = query(collectionRef);
 
   if (filters?.clientId) {
@@ -593,7 +593,7 @@ export const createPaymentLog = async (
   data: Omit<PaymentLog, "id" | "createdAt">
 ): Promise<string> => {
   const docRef = await addDoc(
-    collection(db, getUserCollection(userId, "paymentLogs")),
+    collection(db, getSharedCollection("paymentLogs")),
     {
       ...data,
       createdAt: Timestamp.now(),
@@ -606,7 +606,7 @@ export const deletePaymentLog = async (
   userId: string,
   logId: string
 ): Promise<void> => {
-  const docRef = doc(db, getUserCollection(userId, "paymentLogs"), logId);
+  const docRef = doc(db, getSharedCollection("paymentLogs"), logId);
   await deleteDoc(docRef);
 };
 
@@ -615,7 +615,7 @@ export const rollbackPaymentTransaction = async (
   logId: string
 ): Promise<void> => {
   // Get the payment log
-  const logRef = doc(db, getUserCollection(userId, "paymentLogs"), logId);
+  const logRef = doc(db, getSharedCollection("paymentLogs"), logId);
   const logSnap = await getDoc(logRef);
   
   if (!logSnap.exists()) {
@@ -648,7 +648,7 @@ export const rollbackPaymentTransaction = async (
   const batch = writeBatch(db);
   
   // Update payment
-  const paymentRef = doc(db, getUserCollection(userId, "payments"), payment.id);
+  const paymentRef = doc(db, getSharedCollection("payments"), payment.id);
   batch.update(paymentRef, {
     amountPaid: Math.max(0, newAmountPaid),
     pendingAmount: newPendingAmount,
