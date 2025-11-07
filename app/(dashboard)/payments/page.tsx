@@ -191,6 +191,16 @@ export default function PaymentsPage() {
     currentPage * itemsPerPage
   );
 
+  // Calculate totals for filtered pending payments
+  const pendingTotals = useMemo(() => {
+    return {
+      totalExpected: pendingPayments.reduce((sum, p) => sum + p.amountExpected, 0),
+      totalPaid: pendingPayments.reduce((sum, p) => sum + p.amountPaid, 0),
+      totalPending: pendingPayments.reduce((sum, p) => sum + p.pendingAmount, 0),
+      count: pendingPayments.length,
+    };
+  }, [pendingPayments]);
+
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
@@ -468,6 +478,28 @@ export default function PaymentsPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+
+            {/* Totals Footer */}
+            <div className="mt-4 pt-4 border-t-2 border-gray-300 bg-gray-50 rounded-lg p-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <p className="text-sm text-gray-600 mb-1">Total Payments</p>
+                  <p className="text-lg font-bold text-gray-800">{pendingTotals.count}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-gray-600 mb-1">Total Expected</p>
+                  <p className="text-lg font-bold text-gray-800">{formatCurrency(pendingTotals.totalExpected)}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-gray-600 mb-1">Total Paid</p>
+                  <p className="text-lg font-bold text-success-600">{formatCurrency(pendingTotals.totalPaid)}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-gray-600 mb-1">Total Pending</p>
+                  <p className="text-lg font-bold text-danger-600">{formatCurrency(pendingTotals.totalPending)}</p>
+                </div>
+              </div>
             </div>
 
             {/* Pagination */}

@@ -85,7 +85,7 @@ export const deleteClient = async (
 export const getGroups = async (userId: string): Promise<Group[]> => {
   const q = query(
     collection(db, getSharedCollection("groups")),
-    orderBy("createdAt", "desc")
+    orderBy("groupName", "asc")
   );
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Group));

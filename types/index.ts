@@ -40,8 +40,8 @@ export interface Auction {
   chitMonth: string; // "YYYY-MM" format
   auctionDate: Timestamp;
   paymentDueDate: Timestamp;
-  winnerClientId: string;
-  winnerName: string;
+  winnerClientId: string | string[]; // Support single or multiple winners
+  winnerName: string | string[]; // Support single or multiple winners
   bidAmount: number; // Discount
   payoutAmount: number; // Payable to member
   agentCommission: number;

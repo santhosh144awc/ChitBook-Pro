@@ -44,9 +44,10 @@ export default function AuctionsPage() {
     chitMonth: "",
     auctionDate: "",
     paymentDueDate: "",
-    winnerClientId: "",
-    winnerName: "",
+    winnerClientId: [] as string[],
+    winnerName: [] as string[],
     bidAmount: "",
+    isCompanyBid: false,
   });
   const [calculations, setCalculations] = useState({
     payoutAmount: 0,
@@ -86,6 +87,24 @@ export default function AuctionsPage() {
     }
   }, [auctions.length, uniqueMonths, monthFilter]);
 
+  // Filter groups that already have auctions for the selected chit month (only when creating new auction)
+  const availableGroups = useMemo(() => {
+    if (editingAuction) {
+      // When editing, show all groups (including the current one)
+      return groups;
+    }
+    // When creating new auction, filter out groups that already have an auction for the selected chit month
+    if (!formData.chitMonth) {
+      return groups;
+    }
+    const groupsWithAuctionForMonth = new Set(
+      auctions
+        .filter(auction => auction.chitMonth === formData.chitMonth)
+        .map(auction => auction.groupId)
+    );
+    return groups.filter(group => !groupsWithAuctionForMonth.has(group.id));
+  }, [groups, auctions, formData.chitMonth, editingAuction]);
+
   // Filter and sort auctions by selected month
   const filteredAndSortedAuctions = useMemo(() => {
     let filtered = monthFilter ? auctions.filter(auction => auction.chitMonth === monthFilter) : [];
@@ -105,8 +124,14 @@ export default function AuctionsPage() {
           bValue = b.chitMonth;
           break;
         case "winnerName":
-          aValue = (a.winnerName || "").toLowerCase();
-          bValue = (b.winnerName || "").toLowerCase();
+          const aWinnerStr = Array.isArray(a.winnerName) 
+            ? a.winnerName.join(", ") 
+            : (a.winnerName || "");
+          const bWinnerStr = Array.isArray(b.winnerName)
+            ? b.winnerName.join(", ")
+            : (b.winnerName || "");
+          aValue = aWinnerStr.toLowerCase();
+          bValue = bWinnerStr.toLowerCase();
           break;
         case "bidAmount":
           aValue = a.bidAmount;
@@ -195,16 +220,18 @@ export default function AuctionsPage() {
   // Load group members when group is selected
   useEffect(() => {
     const loadMembers = async () => {
-      if (formData.groupId && user && !editingAuction) {
+      if (formData.groupId && user) {
         try {
           const members = await getGroupMembers(user.uid, formData.groupId);
           setGroupMembers(members);
-          // Clear winner selection when group changes
-          setFormData(prev => ({
-            ...prev,
-            winnerClientId: "",
-            winnerName: ""
-          }));
+          // Clear winner selection when group changes (only for new auctions)
+          if (!editingAuction) {
+            setFormData(prev => ({
+              ...prev,
+              winnerClientId: [],
+              winnerName: []
+            }));
+          }
         } catch (error) {
           console.error("Error loading group members:", error);
           setGroupMembers([]);
@@ -251,25 +278,61 @@ export default function AuctionsPage() {
       const auctionDate = auction.auctionDate.toDate().toISOString().split("T")[0];
       const paymentDueDate = auction.paymentDueDate.toDate().toISOString().split("T")[0];
       
-      // Load group members for editing
+      // Convert winner data to arrays (handle both old single winner and new multiple winners)
+      const winnerClientIds = Array.isArray(auction.winnerClientId) 
+        ? auction.winnerClientId 
+        : auction.winnerClientId ? [auction.winnerClientId] : [];
+      const winnerNames = Array.isArray(auction.winnerName)
+        ? auction.winnerName
+        : auction.winnerName ? [auction.winnerName] : [];
+      
+      // Check if this is a company bid (winnerName contains "Company Bid")
+      const isCompanyBid = winnerNames.length > 0 && 
+        (winnerNames.includes("Company Bid") || winnerNames[0] === "Company Bid");
+      
+      // Load group members for editing first
       if (user && auction.groupId) {
         try {
           const members = await getGroupMembers(user.uid, auction.groupId);
           setGroupMembers(members);
+          
+          // Set form data after members are loaded
+          setFormData({
+            groupId: auction.groupId,
+            chitMonth: auction.chitMonth,
+            auctionDate,
+            paymentDueDate,
+            winnerClientId: isCompanyBid ? [] : winnerClientIds,
+            winnerName: isCompanyBid ? [] : winnerNames,
+            bidAmount: auction.bidAmount.toString(),
+            isCompanyBid,
+          });
         } catch (error) {
           console.error("Error loading group members:", error);
+          // Still set form data even if members fail to load
+          setFormData({
+            groupId: auction.groupId,
+            chitMonth: auction.chitMonth,
+            auctionDate,
+            paymentDueDate,
+            winnerClientId: isCompanyBid ? [] : winnerClientIds,
+            winnerName: isCompanyBid ? [] : winnerNames,
+            bidAmount: auction.bidAmount.toString(),
+            isCompanyBid,
+          });
         }
+      } else {
+        setFormData({
+          groupId: auction.groupId,
+          chitMonth: auction.chitMonth,
+          auctionDate,
+          paymentDueDate,
+          winnerClientId: isCompanyBid ? [] : winnerClientIds,
+          winnerName: isCompanyBid ? [] : winnerNames,
+          bidAmount: auction.bidAmount.toString(),
+          isCompanyBid,
+        });
       }
-      
-      setFormData({
-        groupId: auction.groupId,
-        chitMonth: auction.chitMonth,
-        auctionDate,
-        paymentDueDate,
-        winnerClientId: auction.winnerClientId,
-        winnerName: auction.winnerName,
-        bidAmount: auction.bidAmount.toString(),
-      });
     } else {
       setEditingAuction(null);
       const now = new Date();
@@ -279,9 +342,10 @@ export default function AuctionsPage() {
         chitMonth: currentMonth,
         auctionDate: "",
         paymentDueDate: "",
-        winnerClientId: "",
-        winnerName: "",
+        winnerClientId: [],
+        winnerName: [],
         bidAmount: "",
+        isCompanyBid: false,
       });
       setGroupMembers([]);
     }
@@ -303,9 +367,10 @@ export default function AuctionsPage() {
       chitMonth: "",
       auctionDate: "",
       paymentDueDate: "",
-      winnerClientId: "",
-      winnerName: "",
+      winnerClientId: [],
+      winnerName: [],
       bidAmount: "",
+      isCompanyBid: false,
     });
   };
 
@@ -313,6 +378,12 @@ export default function AuctionsPage() {
     e.preventDefault();
 
     try {
+      // Validate that at least one winner is selected OR company bid is checked
+      if (!formData.isCompanyBid && (!formData.winnerClientId || formData.winnerClientId.length === 0)) {
+        toast.error("Please select at least one winner or mark as Company Bid");
+        return;
+      }
+
       const selectedGroup = groups.find((g) => g.id === formData.groupId);
       if (!selectedGroup) {
         toast.error("Group not found");
@@ -330,14 +401,27 @@ export default function AuctionsPage() {
         actualMemberCount || selectedGroup.memberCount
       );
 
+      // Ensure winner data is arrays
+      // If company bid, set winner to "Company Bid"
+      const winnerClientIds = formData.isCompanyBid 
+        ? [] 
+        : (Array.isArray(formData.winnerClientId) 
+          ? formData.winnerClientId 
+          : formData.winnerClientId ? [formData.winnerClientId] : []);
+      const winnerNames = formData.isCompanyBid
+        ? ["Company Bid"]
+        : (Array.isArray(formData.winnerName)
+          ? formData.winnerName
+          : formData.winnerName ? [formData.winnerName] : []);
+
       const auctionData = {
         groupId: selectedGroup.id,
         groupName: selectedGroup.groupName,
         chitMonth: formData.chitMonth,
         auctionDate: Timestamp.fromDate(new Date(formData.auctionDate)),
         paymentDueDate: Timestamp.fromDate(new Date(formData.paymentDueDate)),
-        winnerClientId: formData.winnerClientId,
-        winnerName: formData.winnerName,
+        winnerClientId: winnerClientIds,
+        winnerName: winnerNames,
         bidAmount: parseFloat(formData.bidAmount),
         payoutAmount: amounts.payoutAmount,
         agentCommission: amounts.agentCommission,
@@ -513,7 +597,7 @@ export default function AuctionsPage() {
                       <SortButton field="chitMonth">Month</SortButton>
                     </th>
                     <th className="text-left py-3 px-4 font-semibold text-gray-700">
-                      <SortButton field="winnerName">Winner</SortButton>
+                      <SortButton field="winnerName">Winner(s)</SortButton>
                     </th>
                     <th className="text-left py-3 px-4 font-semibold text-gray-700">
                       <SortButton field="bidAmount">Discount</SortButton>
@@ -532,7 +616,13 @@ export default function AuctionsPage() {
                     <tr key={auction.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-3 px-4 font-medium">{auction.groupName}</td>
                       <td className="py-3 px-4">{auction.chitMonth}</td>
-                      <td className="py-3 px-4">{auction.winnerName || "-"}</td>
+                      <td className="py-3 px-4">
+                        {Array.isArray(auction.winnerName) 
+                          ? auction.winnerName.length > 0 
+                            ? auction.winnerName.join(", ")
+                            : "-"
+                          : auction.winnerName || "-"}
+                      </td>
                       <td className="py-3 px-4">{formatCurrency(auction.bidAmount)}</td>
                       <td className="py-3 px-4">{formatCurrency(auction.perMemberContribution)}</td>
                       <td className="py-3 px-4">{formatDate(auction.paymentDueDate)}</td>
@@ -624,7 +714,7 @@ export default function AuctionsPage() {
                     disabled={!!editingAuction}
                   >
                     <option value="">Select a group</option>
-                    {groups.map((group) => (
+                    {availableGroups.map((group) => (
                       <option key={group.id} value={group.id}>
                         {group.groupName}
                       </option>
@@ -705,38 +795,77 @@ export default function AuctionsPage() {
                   />
                 </div>
               </div>
+              
+              {/* Company Bid Checkbox - Prominent placement */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="companyBid"
+                    checked={formData.isCompanyBid}
+                    onChange={(e) => {
+                      setFormData({ 
+                        ...formData, 
+                        isCompanyBid: e.target.checked,
+                        winnerClientId: e.target.checked ? [] : formData.winnerClientId,
+                        winnerName: e.target.checked ? [] : formData.winnerName,
+                      });
+                    }}
+                    className="w-5 h-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500 cursor-pointer"
+                  />
+                  <label htmlFor="companyBid" className="text-sm font-semibold text-gray-800 cursor-pointer">
+                    Company Bid (No one bid for this auction - Company will bid and collect money from all members)
+                  </label>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Winner Name *
+                    Winner Name(s) {!formData.isCompanyBid && "*"} (Select multiple if needed)
                   </label>
                   <select
-                    required
+                    required={!formData.isCompanyBid}
+                    multiple
+                    size={Math.min(6, Math.max(3, groupMembers.length || 3))}
                     value={formData.winnerClientId}
                     onChange={(e) => {
-                      const selectedMemberId = e.target.value;
-                      const selectedMember = groupMembers.find(m => m.clientId === selectedMemberId);
+                      const selectedIds = Array.from(e.target.selectedOptions, option => option.value);
+                      const selectedMembers = groupMembers.filter(m => selectedIds.includes(m.clientId));
                       setFormData({ 
                         ...formData, 
-                        winnerClientId: selectedMemberId,
-                        winnerName: selectedMember?.clientName || ""
+                        winnerClientId: selectedIds,
+                        winnerName: selectedMembers.map(m => m.clientName),
+                        isCompanyBid: false, // Uncheck company bid if winner is selected
                       });
                     }}
                     className="input-field"
-                    disabled={!formData.groupId || groupMembers.length === 0}
+                    disabled={!formData.groupId || groupMembers.length === 0 || formData.isCompanyBid}
                   >
-                    <option value="">{formData.groupId ? "Select a member" : "Select a group first"}</option>
                     {groupMembers.map((member) => (
                       <option key={member.clientId} value={member.clientId}>
-                        {member.clientName} {member.chitCount > 1 ? `(${member.chitCount} chits)` : ""}
+                        {member.clientName} {member.chitCount !== 1 ? `(${member.chitCount} ${member.chitCount === 0.5 ? 'chit' : 'chits'})` : ""}
                       </option>
                     ))}
                   </select>
+                  {formData.isCompanyBid && (
+                    <p className="text-xs text-blue-600 mt-1 font-medium">
+                      Company Bid selected - payments will still be collected from all members
+                    </p>
+                  )}
+                  {formData.winnerClientId.length > 0 && !formData.isCompanyBid && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Selected: {formData.winnerName.join(", ")} ({formData.winnerClientId.length} winner{formData.winnerClientId.length > 1 ? "s" : ""})
+                    </p>
+                  )}
                   {!formData.groupId && (
                     <p className="text-xs text-gray-500 mt-1">Please select a group first</p>
                   )}
                   {formData.groupId && groupMembers.length === 0 && (
                     <p className="text-xs text-gray-500 mt-1">No members in this group</p>
+                  )}
+                  {formData.groupId && groupMembers.length > 0 && !formData.isCompanyBid && (
+                    <p className="text-xs text-gray-500 mt-1">Hold Ctrl (Windows) or Cmd (Mac) to select multiple winners</p>
                   )}
                 </div>
                 <div>

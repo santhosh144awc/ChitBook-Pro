@@ -105,7 +105,7 @@ export default function MembershipsPage() {
 
       if (editingMembership) {
         await updateGroupMember(user!.uid, editingMembership.id, {
-          chitCount: parseInt(formData.chitCount),
+          chitCount: parseFloat(formData.chitCount),
           notes: formData.notes,
         });
         toast.success("Membership updated successfully");
@@ -124,7 +124,7 @@ export default function MembershipsPage() {
           groupName: selectedGroup.groupName,
           clientId: selectedClient.id,
           clientName: selectedClient.name,
-          chitCount: parseInt(formData.chitCount),
+          chitCount: parseFloat(formData.chitCount),
           notes: formData.notes,
         });
         toast.success("Membership created successfully");
@@ -355,12 +355,13 @@ export default function MembershipsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Chit Count *
+                  Chit Count * (e.g., 1, 1.5, 0.5)
                 </label>
                 <input
                   type="number"
                   required
-                  min="1"
+                  min="0.5"
+                  step="0.1"
                   value={formData.chitCount}
                   onChange={(e) => setFormData({ ...formData, chitCount: e.target.value })}
                   className="input-field"

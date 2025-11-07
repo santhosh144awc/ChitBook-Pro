@@ -39,6 +39,12 @@ export default function GroupDetailPage() {
     chitCount: "1",
     notes: "",
   });
+  // Sort state for members
+  const [memberSortField, setMemberSortField] = useState<"clientName" | "chitCount">("clientName");
+  const [memberSortDirection, setMemberSortDirection] = useState<"asc" | "desc">("asc");
+  // Sort state for auctions
+  const [auctionSortField, setAuctionSortField] = useState<"auctionDate" | "winnerName" | "bidAmount">("auctionDate");
+  const [auctionSortDirection, setAuctionSortDirection] = useState<"asc" | "desc">("asc");
 
   useEffect(() => {
     if (user && groupId && typeof groupId === 'string') {
@@ -88,14 +94,119 @@ export default function GroupDetailPage() {
   // Calculate total member count (sum of chitCount)
   const totalMemberCount = members.reduce((sum, m) => sum + m.chitCount, 0);
 
-  // Sort auctions by auction date (oldest first) for serial number calculation
-  const sortedAuctions = useMemo(() => {
-    return [...auctions].sort((a, b) => {
-      const dateA = a.auctionDate.toMillis();
-      const dateB = b.auctionDate.toMillis();
-      return dateA - dateB; // Ascending order (oldest first)
+  // Sort members
+  const sortedMembers = useMemo(() => {
+    const sorted = [...members].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (memberSortField) {
+        case "clientName":
+          aValue = a.clientName.toLowerCase();
+          bValue = b.clientName.toLowerCase();
+          break;
+        case "chitCount":
+          aValue = a.chitCount;
+          bValue = b.chitCount;
+          break;
+        default:
+          return 0;
+      }
+
+      if (typeof aValue === "string" && typeof bValue === "string") {
+        return memberSortDirection === "asc"
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      }
+
+      return memberSortDirection === "asc" ? aValue - bValue : bValue - aValue;
     });
-  }, [auctions]);
+    return sorted;
+  }, [members, memberSortField, memberSortDirection]);
+
+  // Sort auctions
+  const sortedAuctions = useMemo(() => {
+    const sorted = [...auctions].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (auctionSortField) {
+        case "auctionDate":
+          aValue = a.auctionDate.toMillis();
+          bValue = b.auctionDate.toMillis();
+          break;
+        case "winnerName":
+          const aWinnerStr = Array.isArray(a.winnerName) 
+            ? a.winnerName.join(", ") 
+            : (a.winnerName || "");
+          const bWinnerStr = Array.isArray(b.winnerName)
+            ? b.winnerName.join(", ")
+            : (b.winnerName || "");
+          aValue = aWinnerStr.toLowerCase();
+          bValue = bWinnerStr.toLowerCase();
+          break;
+        case "bidAmount":
+          aValue = a.bidAmount;
+          bValue = b.bidAmount;
+          break;
+        default:
+          return 0;
+      }
+
+      if (typeof aValue === "string" && typeof bValue === "string") {
+        return auctionSortDirection === "asc"
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      }
+
+      return auctionSortDirection === "asc" ? aValue - bValue : bValue - aValue;
+    });
+    return sorted;
+  }, [auctions, auctionSortField, auctionSortDirection]);
+
+  // Sort button component for members
+  const MemberSortButton = ({ field, children }: { field: typeof memberSortField; children: React.ReactNode }) => (
+    <button
+      onClick={() => {
+        if (memberSortField === field) {
+          setMemberSortDirection(memberSortDirection === "asc" ? "desc" : "asc");
+        } else {
+          setMemberSortField(field);
+          setMemberSortDirection("asc");
+        }
+      }}
+      className="flex items-center gap-1 hover:text-primary-600"
+    >
+      {children}
+      {memberSortField === field && (
+        <span className="text-xs">
+          {memberSortDirection === "asc" ? "↑" : "↓"}
+        </span>
+      )}
+    </button>
+  );
+
+  // Sort button component for auctions
+  const AuctionSortButton = ({ field, children }: { field: typeof auctionSortField; children: React.ReactNode }) => (
+    <button
+      onClick={() => {
+        if (auctionSortField === field) {
+          setAuctionSortDirection(auctionSortDirection === "asc" ? "desc" : "asc");
+        } else {
+          setAuctionSortField(field);
+          setAuctionSortDirection("asc");
+        }
+      }}
+      className="flex items-center gap-1 hover:text-primary-600"
+    >
+      {children}
+      {auctionSortField === field && (
+        <span className="text-xs">
+          {auctionSortDirection === "asc" ? "↑" : "↓"}
+        </span>
+      )}
+    </button>
+  );
 
   const handleOpenAddModal = () => {
     setFormData({ clientId: "", chitCount: "1", notes: "" });
@@ -135,7 +246,7 @@ export default function GroupDetailPage() {
         groupName: group.groupName,
         clientId: selectedClient.id,
         clientName: selectedClient.name,
-        chitCount: parseInt(formData.chitCount),
+        chitCount: parseFloat(formData.chitCount),
         notes: formData.notes,
       });
 
@@ -153,7 +264,7 @@ export default function GroupDetailPage() {
 
     try {
       await updateGroupMember(user!.uid, editingMember.id, {
-        chitCount: parseInt(formData.chitCount),
+        chitCount: parseFloat(formData.chitCount),
         notes: formData.notes,
       });
 
@@ -285,14 +396,18 @@ export default function GroupDetailPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Client Name</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Chit Count</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        <MemberSortButton field="clientName">Client Name</MemberSortButton>
+                      </th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        <MemberSortButton field="chitCount">Chit Count</MemberSortButton>
+                      </th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Notes</th>
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {members.map((member) => (
+                    {sortedMembers.map((member) => (
                       <tr key={member.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-3 px-4 font-medium">{member.clientName}</td>
                         <td className="py-3 px-4">{member.chitCount}</td>
@@ -334,9 +449,15 @@ export default function GroupDetailPage() {
                   <thead>
                     <tr className="border-b border-gray-200">
                       <th className="text-left py-3 px-4 font-semibold text-gray-700">S.No</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Auction Date</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Winner Name</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Bid Amount</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        <AuctionSortButton field="auctionDate">Auction Date</AuctionSortButton>
+                      </th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        <AuctionSortButton field="winnerName">Winner Name</AuctionSortButton>
+                      </th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                        <AuctionSortButton field="bidAmount">Bid Amount</AuctionSortButton>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -344,7 +465,13 @@ export default function GroupDetailPage() {
                       <tr key={auction.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-3 px-4">{index + 1}</td>
                         <td className="py-3 px-4">{formatDate(auction.auctionDate)}</td>
-                        <td className="py-3 px-4 font-medium">{auction.winnerName}</td>
+                        <td className="py-3 px-4 font-medium">
+                          {Array.isArray(auction.winnerName) 
+                            ? auction.winnerName.length > 0 
+                              ? auction.winnerName.join(", ")
+                              : "-"
+                            : auction.winnerName || "-"}
+                        </td>
                         <td className="py-3 px-4">{formatCurrency(auction.bidAmount)}</td>
                       </tr>
                     ))}
@@ -382,12 +509,13 @@ export default function GroupDetailPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Chit Count *
+                  Chit Count * (e.g., 1, 1.5, 0.5)
                 </label>
                 <input
                   type="number"
                   required
-                  min="1"
+                  min="0.5"
+                  step="0.1"
                   value={formData.chitCount}
                   onChange={(e) => setFormData({ ...formData, chitCount: e.target.value })}
                   className="input-field"
@@ -436,12 +564,13 @@ export default function GroupDetailPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Chit Count *
+                  Chit Count * (e.g., 1, 1.5, 0.5)
                 </label>
                 <input
                   type="number"
                   required
-                  min="1"
+                  min="0.5"
+                  step="0.1"
                   value={formData.chitCount}
                   onChange={(e) => setFormData({ ...formData, chitCount: e.target.value })}
                   className="input-field"
