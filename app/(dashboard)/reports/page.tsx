@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getPayments,
@@ -8,8 +8,9 @@ import {
   getGroups,
   getGroupMembers,
   getPaymentLogs,
+  getAuctions,
 } from "@/lib/firestore";
-import type { Payment, Client, PaymentLog, Group } from "@/types";
+import type { Payment, Client, PaymentLog, Group, Auction, GroupMember } from "@/types";
 import toast from "react-hot-toast";
 import { formatDate, formatCurrency, isOverdue, getCurrentMonth } from "@/lib/utils";
 import Pagination from "@/components/common/Pagination";
@@ -35,13 +36,31 @@ export default function ReportsPage() {
   // Client Activity Report
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [clientSearchTerm, setClientSearchTerm] = useState("");
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [isClientInputFocused, setIsClientInputFocused] = useState(false);
+  const clientInputRef = useRef<HTMLInputElement>(null);
+  const clientDropdownRef = useRef<HTMLDivElement>(null);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
   const [clientGroups, setClientGroups] = useState<Array<{ groupName: string; chitCount: number }>>([]);
-  const [clientPendingByGroup, setClientPendingByGroup] = useState<Array<{ groupName: string; totalPending: number }>>([]);
+  const [clientPendingByGroup, setClientPendingByGroup] = useState<Array<{
+    groupName: string;
+    groupId: string;
+    chitMonth: string;
+    auctionValue: number;
+    chitCount: number;
+    amountDue: number;
+    amountPaid: number;
+    totalPending: number;
+  }>>([]);
   const [clientPaymentHistory, setClientPaymentHistory] = useState<PaymentLog[]>([]);
+  const [allAuctions, setAllAuctions] = useState<Auction[]>([]);
+  const [clientGroupMembers, setClientGroupMembers] = useState<GroupMember[]>([]);
+  const [clientGroupsSortField, setClientGroupsSortField] = useState<"groupName" | "chitCount">("groupName");
+  const [clientGroupsSortDirection, setClientGroupsSortDirection] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -54,20 +73,99 @@ export default function ReportsPage() {
     if (activeTab === "client" && selectedClientId) {
       loadClientReport();
     }
-  }, [selectedClientId, selectedMonth, activeTab]);
+  }, [selectedClientId, selectedMonth, activeTab, allAuctions, allGroups]);
+
+  // Handle click outside to close client dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        clientDropdownRef.current &&
+        !clientDropdownRef.current.contains(event.target as Node) &&
+        clientInputRef.current &&
+        !clientInputRef.current.contains(event.target as Node)
+      ) {
+        setShowClientDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Filter clients based on search term
+  const filteredClients = useMemo(() => {
+    // Sort clients alphabetically
+    const sortedClients = [...allClients].sort((a, b) => a.name.localeCompare(b.name));
+    
+    // If no search term, show first 50 clients
+    if (!clientSearchTerm) {
+      return sortedClients.slice(0, 50);
+    }
+    
+    // If search term matches selected client name exactly, show all (user might want to change)
+    const selectedClient = selectedClientId ? allClients.find(c => c.id === selectedClientId) : null;
+    if (selectedClient && clientSearchTerm === selectedClient.name && showClientDropdown) {
+      // When focused and showing exact selected client name, show all for easy switching
+      return sortedClients.slice(0, 50);
+    }
+    
+    // Otherwise filter by search term
+    return sortedClients.filter((client) =>
+      client.name.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
+      client.phone.includes(clientSearchTerm) ||
+      client.email.toLowerCase().includes(clientSearchTerm.toLowerCase())
+    );
+  }, [allClients, clientSearchTerm, selectedClientId, showClientDropdown]);
+
+  // Sort client groups
+  const sortedClientGroups = useMemo(() => {
+    const sorted = [...clientGroups];
+    sorted.sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      if (clientGroupsSortField === "groupName") {
+        aValue = a.groupName.toLowerCase();
+        bValue = b.groupName.toLowerCase();
+      } else {
+        aValue = a.chitCount;
+        bValue = b.chitCount;
+      }
+
+      if (typeof aValue === "string" && typeof bValue === "string") {
+        return clientGroupsSortDirection === "asc"
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      }
+
+      return clientGroupsSortDirection === "asc" ? aValue - bValue : bValue - aValue;
+    });
+    return sorted;
+  }, [clientGroups, clientGroupsSortField, clientGroupsSortDirection]);
+
+  // Calculate totals for pending by group footer
+  const pendingByGroupTotals = useMemo(() => {
+    const totalAmountPaid = clientPendingByGroup.reduce((sum, item) => sum + item.amountPaid, 0);
+    const totalPending = clientPendingByGroup.reduce((sum, item) => sum + item.totalPending, 0);
+    return { totalAmountPaid, totalPending };
+  }, [clientPendingByGroup]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [payments, groups, clients] = await Promise.all([
+      const [payments, groups, clients, auctions] = await Promise.all([
         getPayments(user!.uid),
         getGroups(user!.uid),
         getClients(user!.uid),
+        getAuctions(user!.uid),
       ]);
 
       setAllPayments(payments);
       setAllGroups(groups);
       setAllClients(clients);
+      setAllAuctions(auctions);
     } catch (error: any) {
       console.error("Error loading reports data:", error);
       toast.error(error?.message || "Failed to load data");
@@ -261,6 +359,7 @@ export default function ReportsPage() {
       const clientMemberships = memberships.filter(
         (m) => m.clientId === selectedClientId
       );
+      setClientGroupMembers(clientMemberships);
       setClientGroups(
         clientMemberships.map((m) => ({
           groupName: m.groupName,
@@ -268,21 +367,97 @@ export default function ReportsPage() {
         }))
       );
 
-      // Get pending by group
+      // Get pending by group with detailed information
       const payments = await getPayments(user!.uid, { clientId: selectedClientId });
+      const allPaymentsForClient = payments;
       const pendingPayments = payments.filter((p) => p.status !== "Paid");
 
-      const pendingByGroupMap = new Map<string, number>();
+      // Group by groupId and chitMonth to get detailed breakdown
+      const pendingByGroupMap = new Map<string, {
+        groupId: string;
+        groupName: string;
+        chitMonth: string;
+        auctionValue: number;
+        chitCount: number;
+        amountDue: number;
+        amountPaid: number;
+        totalPending: number;
+        auctionDate: Date | null;
+      }>();
+
       pendingPayments.forEach((p) => {
-        const current = pendingByGroupMap.get(p.groupId) || 0;
-        pendingByGroupMap.set(p.groupId, current + p.pendingAmount);
+        const key = `${p.groupId}_${p.chitMonth}`;
+        const existing = pendingByGroupMap.get(key);
+        const membership = clientMemberships.find((m) => m.groupId === p.groupId);
+        const auction = allAuctions.find((a) => a.id === p.auctionId);
+        
+        if (existing) {
+          existing.totalPending += p.pendingAmount;
+          existing.amountPaid += p.amountPaid;
+          existing.amountDue += p.amountExpected;
+        } else {
+          pendingByGroupMap.set(key, {
+            groupId: p.groupId,
+            groupName: p.groupName,
+            chitMonth: p.chitMonth,
+            auctionValue: auction?.perMemberContribution || 0,
+            chitCount: membership?.chitCount || 0,
+            amountDue: p.amountExpected,
+            amountPaid: p.amountPaid,
+            totalPending: p.pendingAmount,
+            auctionDate: auction ? auction.auctionDate.toDate() : null,
+          });
+        }
       });
 
-      const pendingByGroup = Array.from(pendingByGroupMap.entries()).map(([groupId, total]) => {
-        const group = allGroups.find((g) => g.id === groupId);
+      // Also calculate totals for paid payments to show in footer
+      const paidPayments = allPaymentsForClient.filter((p) => p.status === "Paid" || p.status === "Partial");
+      paidPayments.forEach((p) => {
+        const key = `${p.groupId}_${p.chitMonth}`;
+        const existing = pendingByGroupMap.get(key);
+        if (existing) {
+          // Already counted in pending
+        } else {
+          // This is a fully paid group/month, add it for completeness
+          const membership = clientMemberships.find((m) => m.groupId === p.groupId);
+          const auction = allAuctions.find((a) => a.id === p.auctionId);
+          pendingByGroupMap.set(key, {
+            groupId: p.groupId,
+            groupName: p.groupName,
+            chitMonth: p.chitMonth,
+            auctionValue: auction?.perMemberContribution || 0,
+            chitCount: membership?.chitCount || 0,
+            amountDue: p.amountExpected,
+            amountPaid: p.amountPaid,
+            totalPending: p.pendingAmount,
+            auctionDate: auction ? auction.auctionDate.toDate() : null,
+          });
+        }
+      });
+
+      const pendingByGroup = Array.from(pendingByGroupMap.values()).map((item) => {
+        // Format group name with month/year in short form
+        let monthYear = "";
+        if (item.chitMonth) {
+          const date = new Date(item.chitMonth + "-01");
+          monthYear = date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+        } else if (item.auctionDate) {
+          monthYear = item.auctionDate.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+        }
+        
+        const groupNameWithMonth = monthYear 
+          ? `${item.groupName} (${monthYear})`
+          : item.groupName;
+
         return {
-          groupName: group?.groupName || "Unknown",
-          totalPending: total,
+          groupName: groupNameWithMonth,
+          groupId: item.groupId,
+          chitMonth: item.chitMonth,
+          auctionValue: item.auctionValue,
+          chitCount: item.chitCount,
+          amountDue: item.amountDue,
+          amountPaid: item.amountPaid,
+          totalPending: item.totalPending,
         };
       });
 
@@ -563,22 +738,81 @@ export default function ReportsPage() {
         <div className="card">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Client Activity Report</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div>
+            <div className="relative">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Select Client *
               </label>
-              <select
-                value={selectedClientId}
-                onChange={(e) => setSelectedClientId(e.target.value)}
+              <input
+                ref={clientInputRef}
+                type="text"
+                value={clientSearchTerm || (selectedClientId ? allClients.find(c => c.id === selectedClientId)?.name || "" : "")}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setClientSearchTerm(value);
+                  setShowClientDropdown(true);
+                  // Clear selection if user is typing something different
+                  if (value && selectedClientId) {
+                    const selectedClient = allClients.find(c => c.id === selectedClientId);
+                    if (selectedClient && value !== selectedClient.name) {
+                      setSelectedClientId("");
+                    }
+                  } else if (!value) {
+                    setSelectedClientId("");
+                  }
+                }}
+                onFocus={() => {
+                  setIsClientInputFocused(true);
+                  setShowClientDropdown(true);
+                  // When focused, if a client is selected, temporarily clear search to show all
+                  if (selectedClientId) {
+                    const selectedClient = allClients.find(c => c.id === selectedClientId);
+                    if (selectedClient && clientSearchTerm === selectedClient.name) {
+                      // Keep the search term as is so the input shows the selected client name
+                      // The dropdown will show all clients because of the filter logic
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  setIsClientInputFocused(false);
+                  // Small delay to allow click on dropdown item
+                  setTimeout(() => {
+                    if (selectedClientId) {
+                      const selectedClient = allClients.find(c => c.id === selectedClientId);
+                      if (selectedClient) {
+                        setClientSearchTerm(selectedClient.name);
+                      }
+                    }
+                    setShowClientDropdown(false);
+                  }, 200);
+                }}
                 className="input-field"
-              >
-                <option value="">Select a client</option>
-                {allClients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Type to search client..."
+              />
+              {showClientDropdown && (
+                <div
+                  ref={clientDropdownRef}
+                  className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto"
+                >
+                  {filteredClients.length > 0 ? (
+                    filteredClients.map((client) => (
+                      <div
+                        key={client.id}
+                      onClick={() => {
+                        setSelectedClientId(client.id);
+                        setClientSearchTerm(client.name);
+                        setShowClientDropdown(false);
+                      }}
+                        className="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="font-medium text-gray-900">{client.name}</div>
+                        <div className="text-sm text-gray-500">{client.phone} {client.email && `• ${client.email}`}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="px-4 py-2 text-gray-500 text-sm">No clients found</div>
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -599,7 +833,7 @@ export default function ReportsPage() {
               {/* Groups Section */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-800 mb-3">Groups</h3>
-                {clientGroups.length === 0 ? (
+                {sortedClientGroups.length === 0 ? (
                   <p className="text-gray-500">Client is not in any groups.</p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -607,15 +841,53 @@ export default function ReportsPage() {
                       <thead>
                         <tr className="border-b border-gray-200">
                           <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">
-                            Group Name
+                            <button
+                              onClick={() => {
+                                if (clientGroupsSortField === "groupName") {
+                                  setClientGroupsSortDirection(
+                                    clientGroupsSortDirection === "asc" ? "desc" : "asc"
+                                  );
+                                } else {
+                                  setClientGroupsSortField("groupName");
+                                  setClientGroupsSortDirection("asc");
+                                }
+                              }}
+                              className="flex items-center gap-1 hover:text-primary-600"
+                            >
+                              Group Name
+                              {clientGroupsSortField === "groupName" && (
+                                <span className="text-xs">
+                                  {clientGroupsSortDirection === "asc" ? "↑" : "↓"}
+                                </span>
+                              )}
+                            </button>
                           </th>
                           <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">
-                            Chit Count
+                            <button
+                              onClick={() => {
+                                if (clientGroupsSortField === "chitCount") {
+                                  setClientGroupsSortDirection(
+                                    clientGroupsSortDirection === "asc" ? "desc" : "asc"
+                                  );
+                                } else {
+                                  setClientGroupsSortField("chitCount");
+                                  setClientGroupsSortDirection("asc");
+                                }
+                              }}
+                              className="flex items-center gap-1 hover:text-primary-600"
+                            >
+                              Chit Count
+                              {clientGroupsSortField === "chitCount" && (
+                                <span className="text-xs">
+                                  {clientGroupsSortDirection === "asc" ? "↑" : "↓"}
+                                </span>
+                              )}
+                            </button>
                           </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {clientGroups.map((group, index) => (
+                        {sortedClientGroups.map((group, index) => (
                           <tr key={index} className="border-b border-gray-100">
                             <td className="py-2 px-3 text-sm">{group.groupName}</td>
                             <td className="py-2 px-3 text-sm">{group.chitCount}</td>
@@ -633,7 +905,7 @@ export default function ReportsPage() {
                   Total Pending by Group
                 </h3>
                 {clientPendingByGroup.length === 0 ? (
-                  <p className="text-gray-500">No pending payments.</p>
+                  <p className="text-gray-500">No payments found.</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -642,21 +914,76 @@ export default function ReportsPage() {
                           <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">
                             Group Name
                           </th>
-                          <th className="text-left py-2 px-3 text-sm font-semibold text-gray-700">
+                          <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">
+                            Payment Value
+                          </th>
+                          <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">
+                            Chit Count
+                          </th>
+                          <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">
+                            Amount Due
+                          </th>
+                          <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">
+                            Amount Paid
+                          </th>
+                          <th className="text-right py-2 px-3 text-sm font-semibold text-gray-700">
                             Total Pending
                           </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {clientPendingByGroup.map((item, index) => (
-                          <tr key={index} className="border-b border-gray-100">
-                            <td className="py-2 px-3 text-sm">{item.groupName}</td>
-                            <td className="py-2 px-3 text-sm font-semibold">
-                              {formatCurrency(item.totalPending)}
+                        {clientPendingByGroup
+                          .filter((item) => item.totalPending > 0) // Only show rows with pending amounts
+                          .map((item, index) => (
+                            <tr key={index} className="border-b border-gray-100">
+                              <td className="py-2 px-3 text-sm">{item.groupName}</td>
+                              <td className="py-2 px-3 text-sm text-right">
+                                {formatCurrency(item.auctionValue)}
+                              </td>
+                              <td className="py-2 px-3 text-sm text-right">
+                                {item.chitCount}
+                              </td>
+                              <td className="py-2 px-3 text-sm text-right">
+                                {formatCurrency(item.amountDue)}
+                              </td>
+                              <td className="py-2 px-3 text-sm text-right">
+                                {formatCurrency(item.amountPaid)}
+                              </td>
+                              <td className="py-2 px-3 text-sm font-semibold text-right">
+                                {formatCurrency(item.totalPending)}
+                              </td>
+                            </tr>
+                          ))}
+                        {clientPendingByGroup.filter((item) => item.totalPending > 0).length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="py-4 px-3 text-center text-gray-500">
+                              No pending payments.
                             </td>
                           </tr>
-                        ))}
+                        )}
                       </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-gray-300 bg-primary-50">
+                          <td className="py-2 px-3 text-sm font-bold">Total</td>
+                          <td className="py-2 px-3 text-sm text-right font-bold">
+                            {/* No total for Payment Value */}
+                          </td>
+                          <td className="py-2 px-3 text-sm text-right font-bold">
+                            {/* No total for Chit Count */}
+                          </td>
+                          <td className="py-2 px-3 text-sm text-right font-bold">
+                            {formatCurrency(
+                              clientPendingByGroup.reduce((sum, item) => sum + item.amountDue, 0)
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-sm text-right font-bold text-primary-700">
+                            {formatCurrency(pendingByGroupTotals.totalAmountPaid)}
+                          </td>
+                          <td className="py-2 px-3 text-sm text-right font-bold text-primary-700">
+                            {formatCurrency(pendingByGroupTotals.totalPending)}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 )}

@@ -57,14 +57,40 @@ export default function BulkPayPage() {
   const loadPendingPayments = async () => {
     try {
       const allPayments = await getPayments(user!.uid, { clientId: selectedClientId });
-      const pending = allPayments
-        .filter((p) => p.status !== "Paid")
-        .sort((a, b) => {
-          const dateA = a.paymentDueDate.toMillis();
-          const dateB = b.paymentDueDate.toMillis();
-          return dateA - dateB; // Oldest first
-        });
-      setPendingPayments(pending);
+      const pending = allPayments.filter((p) => p.status !== "Paid");
+      
+      // Get current month (first day of current month)
+      const now = new Date();
+      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      currentMonthStart.setHours(0, 0, 0, 0);
+      
+      // Separate into backlog (due before current month) and current month
+      const backlogPayments = pending.filter((p) => {
+        const dueDate = p.paymentDueDate.toDate();
+        return dueDate < currentMonthStart;
+      });
+      
+      const currentMonthPayments = pending.filter((p) => {
+        const dueDate = p.paymentDueDate.toDate();
+        return dueDate >= currentMonthStart;
+      });
+      
+      // Sort each group by payment due date (oldest first)
+      backlogPayments.sort((a, b) => {
+        const dateA = a.paymentDueDate.toMillis();
+        const dateB = b.paymentDueDate.toMillis();
+        return dateA - dateB; // Oldest first
+      });
+      
+      currentMonthPayments.sort((a, b) => {
+        const dateA = a.paymentDueDate.toMillis();
+        const dateB = b.paymentDueDate.toMillis();
+        return dateA - dateB; // Oldest first
+      });
+      
+      // Combine: backlog first, then current month
+      const sortedPayments = [...backlogPayments, ...currentMonthPayments];
+      setPendingPayments(sortedPayments);
     } catch (error) {
       toast.error("Failed to load pending payments");
     }
@@ -152,7 +178,7 @@ export default function BulkPayPage() {
         <h1 className="text-3xl font-bold text-gray-800">Bulk Payment</h1>
         <p className="text-gray-600 mt-2">
           Select a client and enter a bulk payment amount. Payments will be automatically
-          distributed to the oldest pending chits first.
+          distributed to clear old backlog first, then current month pending, sorted by due date.
         </p>
       </div>
 
@@ -199,7 +225,7 @@ export default function BulkPayPage() {
                 <>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-800 mb-3">
-                      Pending Payments (Oldest First)
+                      Pending Payments (Backlog First, Then Current Month)
                     </h3>
                     <div className="overflow-x-auto">
                       <table className="w-full">
