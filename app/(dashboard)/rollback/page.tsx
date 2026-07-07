@@ -11,14 +11,21 @@ export default function RollbackPage() {
   const { user } = useAuth();
   const [paymentLogs, setPaymentLogs] = useState<PaymentLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sortField, setSortField] = useState<"clientName" | "groupName" | "chitMonth" | "amountPaid" | "paymentDate">("paymentDate");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  
+  // Filter states
+  const [searchTerm, setSearchTerm] = useState("");
+  const [groupFilter, setGroupFilter] = useState("all");
+  const [clientFilter, setClientFilter] = useState("all");
+  const [monthFilter, setMonthFilter] = useState("all");
+  
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingLog, setDeletingLog] = useState<PaymentLog | null>(null);
   const [processing, setProcessing] = useState(false);
+
+  const [sortField, setSortField] = useState<"clientName" | "groupName" | "chitMonth" | "amountPaid" | "paymentDate">("paymentDate");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     if (user) {
@@ -67,14 +74,54 @@ export default function RollbackPage() {
     }
   };
 
+  // Derive unique groups, clients, and months for drop-down filters
+  const uniqueGroups = useMemo(() => {
+    const groups = [...new Set(paymentLogs.map(log => log.groupName))].sort();
+    return groups;
+  }, [paymentLogs]);
+
+  const uniqueClients = useMemo(() => {
+    const clients = [...new Set(paymentLogs.map(log => log.clientName))].sort();
+    return clients;
+  }, [paymentLogs]);
+
+  const uniqueMonths = useMemo(() => {
+    const months = [...new Set(paymentLogs.map(log => log.chitMonth))].sort().reverse();
+    return months;
+  }, [paymentLogs]);
+
   // Filter and sort payment logs
   const filteredAndSortedLogs = useMemo(() => {
-    let filtered = paymentLogs.filter(
-      (log) =>
-        log.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.groupName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.chitMonth.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    let filtered = paymentLogs.filter((log) => {
+      // Search term
+      if (searchTerm) {
+        const query = searchTerm.toLowerCase();
+        if (
+          !log.clientName.toLowerCase().includes(query) &&
+          !log.groupName.toLowerCase().includes(query) &&
+          !log.chitMonth.toLowerCase().includes(query)
+        ) {
+          return false;
+        }
+      }
+
+      // Group filter
+      if (groupFilter !== "all" && log.groupName !== groupFilter) {
+        return false;
+      }
+
+      // Client filter
+      if (clientFilter !== "all" && log.clientName !== clientFilter) {
+        return false;
+      }
+
+      // Month filter
+      if (monthFilter !== "all" && log.chitMonth !== monthFilter) {
+        return false;
+      }
+
+      return true;
+    });
 
     // Sort logs
     filtered.sort((a, b) => {
@@ -116,7 +163,7 @@ export default function RollbackPage() {
     });
 
     return filtered;
-  }, [paymentLogs, searchTerm, sortField, sortDirection]);
+  }, [paymentLogs, searchTerm, groupFilter, clientFilter, monthFilter, sortField, sortDirection]);
 
   // Paginate sorted logs
   const totalPages = Math.ceil(filteredAndSortedLogs.length / itemsPerPage);
@@ -128,7 +175,7 @@ export default function RollbackPage() {
   // Reset to page 1 when filters or sort change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, sortField, sortDirection]);
+  }, [searchTerm, groupFilter, clientFilter, monthFilter, sortField, sortDirection]);
 
   const handleSort = (field: typeof sortField) => {
     if (sortField === field) {
@@ -174,19 +221,72 @@ export default function RollbackPage() {
       </div>
 
       <div className="card">
-        <div className="mb-4">
-          <input
-            type="text"
-            placeholder="Search by client, group, or month..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="input-field w-auto max-w-xs"
-          />
-        </div>
+        {/* Filters */}
+        {paymentLogs.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+              <input
+                type="text"
+                placeholder="Search by client, group, month..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="input-field"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Month</label>
+              <select
+                value={monthFilter}
+                onChange={(e) => setMonthFilter(e.target.value)}
+                className="input-field"
+              >
+                <option value="all">All Months</option>
+                {uniqueMonths.map((month) => (
+                  <option key={month} value={month}>
+                    {new Date(month + "-01").toLocaleDateString("en-US", { year: "numeric", month: "long" })}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Group</label>
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+                className="input-field"
+              >
+                <option value="all">All Groups</option>
+                {uniqueGroups.map((group) => (
+                  <option key={group} value={group}>
+                    {group}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Client</label>
+              <select
+                value={clientFilter}
+                onChange={(e) => setClientFilter(e.target.value)}
+                className="input-field"
+              >
+                <option value="all">All Clients</option>
+                {uniqueClients.map((client) => (
+                  <option key={client} value={client}>
+                    {client}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
 
-        {filteredAndSortedLogs.length === 0 ? (
+        {paymentLogs.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">No payment logs found.</p>
+        ) : filteredAndSortedLogs.length === 0 ? (
           <p className="text-gray-500 text-center py-8">
-            {searchTerm ? "No payment logs found matching your search." : "No payment logs found."}
+            No payment logs found matching your filters.
           </p>
         ) : (
           <>

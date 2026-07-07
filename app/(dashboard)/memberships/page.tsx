@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getGroupMembers,
@@ -24,6 +24,12 @@ export default function MembershipsPage() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  
+  // Filter states
+  const [searchTerm, setSearchTerm] = useState("");
+  const [groupFilter, setGroupFilter] = useState("all");
+  const [clientFilter, setClientFilter] = useState("all");
+  
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [editingMembership, setEditingMembership] = useState<GroupMember | null>(null);
@@ -173,9 +179,44 @@ export default function MembershipsPage() {
     }
   };
 
+  // Filter and sort memberships
+  const filteredAndSortedMemberships = useMemo(() => {
+    let filtered = memberships.filter((m) => {
+      // Search term
+      if (searchTerm) {
+        const query = searchTerm.toLowerCase();
+        if (
+          !m.clientName.toLowerCase().includes(query) &&
+          !m.groupName.toLowerCase().includes(query)
+        ) {
+          return false;
+        }
+      }
+
+      // Group filter
+      if (groupFilter !== "all" && m.groupId !== groupFilter) {
+        return false;
+      }
+
+      // Client filter
+      if (clientFilter !== "all" && m.clientId !== clientFilter) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return filtered;
+  }, [memberships, searchTerm, groupFilter, clientFilter]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, groupFilter, clientFilter]);
+
   // Paginate memberships
-  const totalPages = Math.ceil(memberships.length / itemsPerPage);
-  const paginatedMemberships = memberships.slice(
+  const totalPages = Math.ceil(filteredAndSortedMemberships.length / itemsPerPage);
+  const paginatedMemberships = filteredAndSortedMemberships.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
@@ -198,9 +239,59 @@ export default function MembershipsPage() {
       </div>
 
       <div className="card">
+        {/* Filters */}
+        {memberships.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+              <input
+                type="text"
+                placeholder="Search by client or group..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="input-field"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Group</label>
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+                className="input-field"
+              >
+                <option value="all">All Groups</option>
+                {allGroups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.groupName}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Client</label>
+              <select
+                value={clientFilter}
+                onChange={(e) => setClientFilter(e.target.value)}
+                className="input-field"
+              >
+                <option value="all">All Clients</option>
+                {allClients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
         {memberships.length === 0 ? (
           <p className="text-gray-500 text-center py-8">
             No memberships yet. Add your first membership!
+          </p>
+        ) : filteredAndSortedMemberships.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">
+            No memberships found matching your search.
           </p>
         ) : (
           <>
@@ -267,8 +358,8 @@ export default function MembershipsPage() {
               <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
                 <div className="text-sm text-gray-600">
                   Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-                  {Math.min(currentPage * itemsPerPage, memberships.length)} of{" "}
-                  {memberships.length} memberships
+                  {Math.min(currentPage * itemsPerPage, filteredAndSortedMemberships.length)} of{" "}
+                  {filteredAndSortedMemberships.length} memberships
                 </div>
                 <div className="flex gap-2">
                   <button

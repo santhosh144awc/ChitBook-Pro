@@ -30,6 +30,7 @@ export default function PaymentsPage() {
   const [groupFilter, setGroupFilter] = useState<string>("all");
   const [clientFilter, setClientFilter] = useState<string>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
+  const [hasInitializedMonth, setHasInitializedMonth] = useState(false);
 
   // Sorting state
   const [sortField, setSortField] = useState<SortField>("paymentDueDate");
@@ -92,6 +93,14 @@ export default function PaymentsPage() {
     const months = [...new Set(allPayments.map(p => p.chitMonth))].sort().reverse();
     return months;
   }, [allPayments]);
+
+  // Default month filter to the latest month on initial load
+  useEffect(() => {
+    if (uniqueMonths.length > 0 && !hasInitializedMonth) {
+      setMonthFilter(uniqueMonths[0]);
+      setHasInitializedMonth(true);
+    }
+  }, [uniqueMonths, hasInitializedMonth]);
 
   // Filter payments
   const filteredPayments = useMemo(() => {
@@ -201,10 +210,54 @@ export default function PaymentsPage() {
     };
   }, [pendingPayments]);
 
+  // Filter paid payment logs based on search, month, group, and client filters
+  const filteredPaidLogs = useMemo(() => {
+    let filtered = paidPaymentLogs.filter(log => {
+      // Group filter
+      if (groupFilter !== "all" && log.groupName !== groupFilter) {
+        return false;
+      }
+      
+      // Client filter
+      if (clientFilter !== "all" && log.clientName !== clientFilter) {
+        return false;
+      }
+      
+      // Month filter
+      if (monthFilter !== "all" && log.chitMonth !== monthFilter) {
+        return false;
+      }
+      
+      // Search query
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return (
+          log.clientName.toLowerCase().includes(query) ||
+          log.groupName.toLowerCase().includes(query) ||
+          log.chitMonth.toLowerCase().includes(query)
+        );
+      }
+      
+      return true;
+    });
+
+    // Apply statusFilter. Since paidPaymentLogs are all "Paid" logs,
+    // if statusFilter is anything other than "all" or "Paid", return empty.
+    if (statusFilter !== "all" && statusFilter !== "Paid") {
+      return [];
+    }
+
+    return filtered;
+  }, [paidPaymentLogs, statusFilter, groupFilter, clientFilter, monthFilter, searchQuery]);
+
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [statusFilter, groupFilter, clientFilter, monthFilter, searchQuery, sortField, sortDirection]);
+
+  useEffect(() => {
+    setPaidCurrentPage(1);
+  }, [statusFilter, groupFilter, clientFilter, monthFilter, searchQuery, paidSortField, paidSortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -339,6 +392,7 @@ export default function PaymentsPage() {
               <option value="all">All Status</option>
               <option value="Pending">Pending</option>
               <option value="Partial">Partial</option>
+              <option value="Paid">Paid</option>
             </select>
           </div>
           <div>
@@ -550,14 +604,14 @@ export default function PaymentsPage() {
       {/* Paid Payments Section */}
       <div className="card">
         <h2 className="text-xl font-semibold text-gray-800 mb-4">Paid Payments</h2>
-        {paidPaymentLogs.length === 0 ? (
+        {filteredPaidLogs.length === 0 ? (
           <p className="text-gray-500 text-center py-8">No paid payments found.</p>
         ) : (
           <>
-            {/* Sort and filter paid payments */}
+            {/* Sort and paginate paid payments */}
             {(() => {
               // Sort paid payment logs
-              const sortedPaidLogs = [...paidPaymentLogs].sort((a, b) => {
+              const sortedPaidLogs = [...filteredPaidLogs].sort((a, b) => {
                 let aValue: any;
                 let bValue: any;
 

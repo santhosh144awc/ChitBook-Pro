@@ -26,6 +26,7 @@ export default function DashboardPage() {
   const [allPayments, setAllPayments] = useState<Payment[]>([]);
   const [allAuctions, setAllAuctions] = useState<Auction[]>([]);
   const [pendingMonthFilter, setPendingMonthFilter] = useState<string>("all");
+  const [hasInitializedPendingMonth, setHasInitializedPendingMonth] = useState(false);
   const [sortField, setSortField] = useState<"auctionDate" | "groupName" | "chitMonth" | "totalPending">("auctionDate");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [currentPage, setCurrentPage] = useState(1);
@@ -96,6 +97,14 @@ export default function DashboardPage() {
     const months = [...new Set(allPayments.map(p => p.chitMonth))].sort().reverse();
     return months;
   }, [allPayments]);
+
+  // Default month filter to the latest month on initial load
+  useEffect(() => {
+    if (uniqueMonths.length > 0 && !hasInitializedPendingMonth) {
+      setPendingMonthFilter(uniqueMonths[0]);
+      setHasInitializedPendingMonth(true);
+    }
+  }, [uniqueMonths, hasInitializedPendingMonth]);
 
   // Process pending payments by group and month
   const pendingByGroup = useMemo(() => {
