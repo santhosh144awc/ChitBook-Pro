@@ -40,6 +40,13 @@ export default function MembershipsPage() {
     chitCount: "1",
     notes: "",
   });
+  // Form Client Search States
+  const [clientFormSearch, setClientFormSearch] = useState("");
+  const [showFormDropdown, setShowFormDropdown] = useState(false);
+  
+  // Filter Client Search States
+  const [clientFilterSearch, setClientFilterSearch] = useState("");
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -65,6 +72,26 @@ export default function MembershipsPage() {
     }
   };
 
+  // Filter clients by form search text (all words matching)
+  const filteredFormClients = useMemo(() => {
+    if (!clientFormSearch.trim()) return allClients;
+    const searchTerms = clientFormSearch.toLowerCase().split(/\s+/).filter(Boolean);
+    return allClients.filter((client) => {
+      const nameLower = client.name.toLowerCase();
+      return searchTerms.every((term) => nameLower.includes(term));
+    });
+  }, [allClients, clientFormSearch]);
+
+  // Filter clients by filter search text (all words matching)
+  const filteredFilterClients = useMemo(() => {
+    if (!clientFilterSearch.trim()) return allClients;
+    const searchTerms = clientFilterSearch.toLowerCase().split(/\s+/).filter(Boolean);
+    return allClients.filter((client) => {
+      const nameLower = client.name.toLowerCase();
+      return searchTerms.every((term) => nameLower.includes(term));
+    });
+  }, [allClients, clientFilterSearch]);
+
   const handleOpenModal = (membership?: GroupMember) => {
     if (membership) {
       setEditingMembership(membership);
@@ -74,6 +101,7 @@ export default function MembershipsPage() {
         chitCount: membership.chitCount.toString(),
         notes: membership.notes,
       });
+      setClientFormSearch(membership.clientName);
     } else {
       setEditingMembership(null);
       setFormData({
@@ -82,7 +110,9 @@ export default function MembershipsPage() {
         chitCount: "1",
         notes: "",
       });
+      setClientFormSearch("");
     }
+    setShowFormDropdown(false);
     setShowModal(true);
   };
 
@@ -95,6 +125,8 @@ export default function MembershipsPage() {
       chitCount: "1",
       notes: "",
     });
+    setClientFormSearch("");
+    setShowFormDropdown(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -104,8 +136,12 @@ export default function MembershipsPage() {
       const selectedClient = allClients.find((c) => c.id === formData.clientId);
       const selectedGroup = allGroups.find((g) => g.id === formData.groupId);
 
-      if (!selectedClient || !selectedGroup) {
-        toast.error("Invalid client or group selection");
+      if (!selectedClient) {
+        toast.error("Please select a client from the search results");
+        return;
+      }
+      if (!selectedGroup) {
+        toast.error("Please select a group");
         return;
       }
 
@@ -269,18 +305,71 @@ export default function MembershipsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Client</label>
-              <select
-                value={clientFilter}
-                onChange={(e) => setClientFilter(e.target.value)}
-                className="input-field"
-              >
-                <option value="all">All Clients</option>
-                {allClients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search client to filter..."
+                  value={clientFilterSearch}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setClientFilterSearch(val);
+                    if (val === "") {
+                      setClientFilter("all");
+                    }
+                    setShowFilterDropdown(true);
+                  }}
+                  onFocus={() => setShowFilterDropdown(true)}
+                  className="input-field"
+                />
+                {showFilterDropdown && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40 cursor-default"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowFilterDropdown(false);
+                      }}
+                    />
+                    <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClientFilter("all");
+                          setClientFilterSearch("");
+                          setShowFilterDropdown(false);
+                        }}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-primary-50 transition-colors ${
+                          clientFilter === "all" ? "bg-primary-100 font-semibold text-primary-900" : "text-gray-700"
+                        }`}
+                      >
+                        All Clients
+                      </button>
+                      {filteredFilterClients.length === 0 ? (
+                        <div className="p-3 text-sm text-gray-500 text-center">No clients found</div>
+                      ) : (
+                        filteredFilterClients.map((client) => (
+                          <button
+                            key={client.id}
+                            type="button"
+                            onClick={() => {
+                              setClientFilter(client.id);
+                              setClientFilterSearch(client.name);
+                              setShowFilterDropdown(false);
+                            }}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-primary-50 transition-colors ${
+                              clientFilter === client.id
+                                ? "bg-primary-100 font-semibold text-primary-900"
+                                : "text-gray-700"
+                            }`}
+                          >
+                            {client.name}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -410,20 +499,57 @@ export default function MembershipsPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Client *
                 </label>
-                <select
-                  required
-                  value={formData.clientId}
-                  onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                  className="input-field"
-                  disabled={!!editingMembership}
-                >
-                  <option value="">Select a client</option>
-                  {allClients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Type to search client..."
+                    value={clientFormSearch}
+                    onChange={(e) => {
+                      setClientFormSearch(e.target.value);
+                      setShowFormDropdown(true);
+                      setFormData({ ...formData, clientId: "" });
+                    }}
+                    onFocus={() => setShowFormDropdown(true)}
+                    className="input-field"
+                    disabled={!!editingMembership}
+                  />
+                  {showFormDropdown && !editingMembership && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40 cursor-default"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowFormDropdown(false);
+                        }}
+                      />
+                      <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                        {filteredFormClients.length === 0 ? (
+                          <div className="p-3 text-sm text-gray-500 text-center">No clients found</div>
+                        ) : (
+                          filteredFormClients.map((client) => (
+                            <button
+                              key={client.id}
+                              type="button"
+                              onClick={() => {
+                                setFormData({ ...formData, clientId: client.id });
+                                setClientFormSearch(client.name);
+                                setShowFormDropdown(false);
+                              }}
+                              className={`w-full text-left px-4 py-2 text-sm hover:bg-primary-50 transition-colors ${
+                                formData.clientId === client.id
+                                  ? "bg-primary-100 font-semibold text-primary-900"
+                                  : "text-gray-700"
+                              }`}
+                            >
+                              {client.name}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">

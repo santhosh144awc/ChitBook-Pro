@@ -12,6 +12,8 @@ import {
   deleteGroupMember,
   getPayments,
   getAuctions,
+  deletePayment,
+  updatePayment,
 } from "@/lib/firestore";
 import type { Group, GroupMember, Client, Auction } from "@/types";
 import toast from "react-hot-toast";
@@ -39,6 +41,8 @@ export default function GroupDetailPage() {
     chitCount: "1",
     notes: "",
   });
+  const [clientSearch, setClientSearch] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
   // Sort state for members
   const [memberSortField, setMemberSortField] = useState<"clientName" | "chitCount">("clientName");
   const [memberSortDirection, setMemberSortDirection] = useState<"asc" | "desc">("asc");
@@ -90,6 +94,16 @@ export default function GroupDetailPage() {
   const availableClients = allClients
     .filter((client) => !members.some((m) => m.clientId === client.id))
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  // Filter clients by search text (all words matching)
+  const filteredClients = useMemo(() => {
+    if (!clientSearch.trim()) return availableClients;
+    const searchTerms = clientSearch.toLowerCase().split(/\s+/).filter(Boolean);
+    return availableClients.filter((client) => {
+      const nameLower = client.name.toLowerCase();
+      return searchTerms.every((term) => nameLower.includes(term));
+    });
+  }, [availableClients, clientSearch]);
 
   // Calculate total member count (sum of chitCount)
   const totalMemberCount = members.reduce((sum, m) => sum + m.chitCount, 0);
@@ -210,6 +224,8 @@ export default function GroupDetailPage() {
 
   const handleOpenAddModal = () => {
     setFormData({ clientId: "", chitCount: "1", notes: "" });
+    setClientSearch("");
+    setShowDropdown(false);
     setShowAddModal(true);
   };
 
@@ -227,6 +243,8 @@ export default function GroupDetailPage() {
     setShowAddModal(false);
     setShowEditModal(false);
     setFormData({ clientId: "", chitCount: "1", notes: "" });
+    setClientSearch("");
+    setShowDropdown(false);
     setEditingMember(null);
   };
 
@@ -237,7 +255,7 @@ export default function GroupDetailPage() {
     try {
       const selectedClient = allClients.find((c) => c.id === formData.clientId);
       if (!selectedClient) {
-        toast.error("Client not found");
+        toast.error("Please select a client from the search results");
         return;
       }
 
@@ -285,27 +303,38 @@ export default function GroupDetailPage() {
     if (!deletingMember || !group) return;
 
     try {
-      // Check if member has any payments for this group
+      // Fetch payments for the member in this group
       const payments = await getPayments(user!.uid, {
         clientId: deletingMember.clientId,
         groupId: group.id,
       });
 
-      if (payments.length > 0) {
-        toast.error("Cannot delete member with existing payments");
-        setShowDeleteModal(false);
-        setDeletingMember(null);
-        return;
+      // Handle existing payments
+      for (const payment of payments) {
+        if (payment.status === "Pending") {
+          // Delete unpaid payments
+          await deletePayment(user!.uid, payment.id);
+        } else if (payment.status === "Partial") {
+          // Keep paid portion, remove pending amount by converting to Paid status
+          await updatePayment(user!.uid, payment.id, {
+            status: "Paid",
+            amountExpected: payment.amountPaid,
+            pendingAmount: 0,
+          });
+        }
+        // "Paid" payments are left untouched for reference
       }
 
+      // Delete the member record
       await deleteGroupMember(user!.uid, deletingMember.id);
-      toast.success("Member deleted successfully");
+      
+      toast.success("Member removed successfully");
       setShowDeleteModal(false);
       setDeletingMember(null);
       loadData();
     } catch (error: any) {
-      console.error("Error deleting member:", error);
-      const errorMessage = error?.message || "Failed to delete member";
+      console.error("Error removing member:", error);
+      const errorMessage = error?.message || "Failed to remove member";
       toast.error(errorMessage);
     }
   };
@@ -493,19 +522,56 @@ export default function GroupDetailPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Client *
                 </label>
-                <select
-                  required
-                  value={formData.clientId}
-                  onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                  className="input-field"
-                >
-                  <option value="">Select a client</option>
-                  {availableClients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Type to search client..."
+                    value={clientSearch}
+                    onChange={(e) => {
+                      setClientSearch(e.target.value);
+                      setShowDropdown(true);
+                      setFormData({ ...formData, clientId: "" });
+                    }}
+                    onFocus={() => setShowDropdown(true)}
+                    className="input-field"
+                  />
+                  {showDropdown && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40 cursor-default"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowDropdown(false);
+                        }}
+                      />
+                      <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                        {filteredClients.length === 0 ? (
+                          <div className="p-3 text-sm text-gray-500 text-center">No clients found</div>
+                        ) : (
+                          filteredClients.map((client) => (
+                            <button
+                              key={client.id}
+                              type="button"
+                              onClick={() => {
+                                setFormData({ ...formData, clientId: client.id });
+                                setClientSearch(client.name);
+                                setShowDropdown(false);
+                              }}
+                              className={`w-full text-left px-4 py-2 text-sm hover:bg-primary-50 transition-colors ${
+                                formData.clientId === client.id
+                                  ? "bg-primary-100 font-semibold text-primary-900"
+                                  : "text-gray-700"
+                              }`}
+                            >
+                              {client.name}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -607,9 +673,12 @@ export default function GroupDetailPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
             <h2 className="text-2xl font-bold text-gray-800 mb-4">Delete Member</h2>
-            <p className="text-gray-600 mb-6">
+            <p className="text-gray-600 mb-4">
               Are you sure you want to remove <strong>{deletingMember.clientName}</strong> from
               this group? This action cannot be undone.
+            </p>
+            <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg mb-6 border border-amber-200">
+              <strong>Notice:</strong> Any unpaid (pending) payment records for this member in this group will be deleted. Partially paid payments will be finalized as fully paid for the amount collected so far, and fully paid records will be kept for future reference.
             </p>
             <div className="flex gap-3">
               <button onClick={handleDelete} className="btn-danger flex-1">

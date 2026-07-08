@@ -29,6 +29,8 @@ export default function PaymentsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [groupFilter, setGroupFilter] = useState<string>("all");
   const [clientFilter, setClientFilter] = useState<string>("all");
+  const [clientFilterSearch, setClientFilterSearch] = useState("");
+  const [showClientFilterDropdown, setShowClientFilterDropdown] = useState(false);
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [hasInitializedMonth, setHasInitializedMonth] = useState(false);
 
@@ -42,7 +44,7 @@ export default function PaymentsPage() {
   const itemsPerPage = 10;
   
   // Sorting state for paid payments
-  const [paidSortField, setPaidSortField] = useState<"clientName" | "groupName" | "chitMonth" | "amountPaid" | "paymentDate">("paymentDate");
+  const [paidSortField, setPaidSortField] = useState<"clientName" | "groupName" | "chitMonth" | "amountPaid" | "paymentDate" | "paymentMethod">("paymentDate");
   const [paidSortDirection, setPaidSortDirection] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
@@ -88,6 +90,16 @@ export default function PaymentsPage() {
     const clients = [...new Set(allPayments.map(p => p.clientName))].sort();
     return clients;
   }, [allPayments]);
+
+  // Filter unique client names by search text (all words matching)
+  const filteredFilterClients = useMemo(() => {
+    if (!clientFilterSearch.trim()) return uniqueClients;
+    const searchTerms = clientFilterSearch.toLowerCase().split(/\s+/).filter(Boolean);
+    return uniqueClients.filter((client) => {
+      const nameLower = client.toLowerCase();
+      return searchTerms.every((term) => nameLower.includes(term));
+    });
+  }, [uniqueClients, clientFilterSearch]);
 
   const uniqueMonths = useMemo(() => {
     const months = [...new Set(allPayments.map(p => p.chitMonth))].sort().reverse();
@@ -427,18 +439,69 @@ export default function PaymentsPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Client</label>
-            <select
-              value={clientFilter}
-              onChange={(e) => setClientFilter(e.target.value)}
-              className="input-field"
-            >
-              <option value="all">All Clients</option>
-              {uniqueClients.map((client) => (
-                <option key={client} value={client}>
-                  {client}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search client to filter..."
+                value={clientFilterSearch}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setClientFilterSearch(val);
+                  if (val === "") {
+                    setClientFilter("all");
+                  }
+                  setShowClientFilterDropdown(true);
+                }}
+                onFocus={() => setShowClientFilterDropdown(true)}
+                className="input-field"
+              />
+              {showClientFilterDropdown && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40 cursor-default"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowClientFilterDropdown(false);
+                    }}
+                  />
+                  <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setClientFilter("all");
+                        setClientFilterSearch("");
+                        setShowClientFilterDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-primary-50 transition-colors ${
+                        clientFilter === "all" ? "bg-primary-100 font-semibold text-primary-900" : "text-gray-700"
+                      }`}
+                    >
+                      All Clients
+                    </button>
+                    {filteredFilterClients.length === 0 ? (
+                      <div className="p-3 text-sm text-gray-500 text-center">No clients found</div>
+                    ) : (
+                      filteredFilterClients.map((client) => (
+                        <button
+                          key={client}
+                          type="button"
+                          onClick={() => {
+                            setClientFilter(client);
+                            setClientFilterSearch(client);
+                            setShowClientFilterDropdown(false);
+                          }}
+                          className={`w-full text-left px-4 py-2 text-sm hover:bg-primary-50 transition-colors ${
+                            clientFilter === client ? "bg-primary-100 font-semibold text-primary-900" : "text-gray-700"
+                          }`}
+                        >
+                          {client}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -632,6 +695,10 @@ export default function PaymentsPage() {
                     aValue = a.amountPaid;
                     bValue = b.amountPaid;
                     break;
+                  case "paymentMethod":
+                    aValue = (a.paymentMethod || "Cash").toLowerCase();
+                    bValue = (b.paymentMethod || "Cash").toLowerCase();
+                    break;
                   case "paymentDate":
                     aValue = a.paymentDate.toMillis();
                     bValue = b.paymentDate.toMillis();
@@ -699,6 +766,9 @@ export default function PaymentsPage() {
                             <PaidSortButton field="amountPaid">Payment Amount</PaidSortButton>
                           </th>
                           <th className="text-left py-3 px-4 font-semibold text-gray-700">
+                            <PaidSortButton field="paymentMethod">Payment Method</PaidSortButton>
+                          </th>
+                          <th className="text-left py-3 px-4 font-semibold text-gray-700">
                             <PaidSortButton field="paymentDate">Payment Date</PaidSortButton>
                           </th>
                         </tr>
@@ -709,8 +779,19 @@ export default function PaymentsPage() {
                             <td className="py-3 px-4 font-medium">{log.clientName}</td>
                             <td className="py-3 px-4">{log.groupName}</td>
                             <td className="py-3 px-4">{log.chitMonth}</td>
-                            <td className="py-3 px-4">{formatCurrency(log.amountPaid)}</td>
-                            <td className="py-3 px-4">{formatDate(log.paymentDate)}</td>
+                            <td className="py-3 px-4 font-medium text-gray-900">{formatCurrency(log.amountPaid)}</td>
+                            <td className="py-3 px-4">
+                              <span
+                                className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center ${
+                                  log.paymentMethod === "Online"
+                                    ? "bg-primary-100 text-primary-800"
+                                    : "bg-success-100 text-success-800"
+                                }`}
+                              >
+                                {log.paymentMethod || "Cash"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-gray-600">{formatDate(log.paymentDate)}</td>
                           </tr>
                         ))}
                       </tbody>

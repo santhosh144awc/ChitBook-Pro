@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getClients,
@@ -17,6 +17,8 @@ export default function BulkPayPage() {
   const { user } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [clientSearch, setClientSearch] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
   const [pendingPayments, setPendingPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [bulkAmount, setBulkAmount] = useState("");
@@ -53,6 +55,16 @@ export default function BulkPayPage() {
       setLoading(false);
     }
   };
+
+  // Filter clients by search text (all words matching)
+  const filteredClients = useMemo(() => {
+    if (!clientSearch.trim()) return clients;
+    const searchTerms = clientSearch.toLowerCase().split(/\s+/).filter(Boolean);
+    return clients.filter((client) => {
+      const nameLower = client.name.toLowerCase();
+      return searchTerms.every((term) => nameLower.includes(term));
+    });
+  }, [clients, clientSearch]);
 
   const loadPendingPayments = async () => {
     try {
@@ -188,18 +200,56 @@ export default function BulkPayPage() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Select Client *
             </label>
-            <select
-              value={selectedClientId}
-              onChange={(e) => setSelectedClientId(e.target.value)}
-              className="input-field"
-            >
-              <option value="">Select a client</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <input
+                type="text"
+                required
+                placeholder="Type to search client..."
+                value={clientSearch}
+                onChange={(e) => {
+                  setClientSearch(e.target.value);
+                  setShowDropdown(true);
+                  setSelectedClientId("");
+                }}
+                onFocus={() => setShowDropdown(true)}
+                className="input-field"
+              />
+              {showDropdown && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40 cursor-default"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDropdown(false);
+                    }}
+                  />
+                  <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                    {filteredClients.length === 0 ? (
+                      <div className="p-3 text-sm text-gray-500 text-center">No clients found</div>
+                    ) : (
+                      filteredClients.map((client) => (
+                        <button
+                          key={client.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedClientId(client.id);
+                            setClientSearch(client.name);
+                            setShowDropdown(false);
+                          }}
+                          className={`w-full text-left px-4 py-2 text-sm hover:bg-primary-50 transition-colors ${
+                            selectedClientId === client.id
+                              ? "bg-primary-100 font-semibold text-primary-900"
+                              : "text-gray-700"
+                          }`}
+                        >
+                          {client.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           {selectedClient && (

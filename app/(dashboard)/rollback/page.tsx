@@ -18,6 +18,8 @@ export default function RollbackPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [groupFilter, setGroupFilter] = useState("all");
   const [clientFilter, setClientFilter] = useState("all");
+  const [clientFilterSearch, setClientFilterSearch] = useState("");
+  const [showClientFilterDropdown, setShowClientFilterDropdown] = useState(false);
   const [monthFilter, setMonthFilter] = useState("all");
   
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -84,6 +86,16 @@ export default function RollbackPage() {
     const clients = [...new Set(paymentLogs.map(log => log.clientName))].sort();
     return clients;
   }, [paymentLogs]);
+
+  // Filter unique client names by search text (all words matching)
+  const filteredFilterClients = useMemo(() => {
+    if (!clientFilterSearch.trim()) return uniqueClients;
+    const searchTerms = clientFilterSearch.toLowerCase().split(/\s+/).filter(Boolean);
+    return uniqueClients.filter((client) => {
+      const nameLower = client.toLowerCase();
+      return searchTerms.every((term) => nameLower.includes(term));
+    });
+  }, [uniqueClients, clientFilterSearch]);
 
   const uniqueMonths = useMemo(() => {
     const months = [...new Set(paymentLogs.map(log => log.chitMonth))].sort().reverse();
@@ -266,18 +278,69 @@ export default function RollbackPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Client</label>
-              <select
-                value={clientFilter}
-                onChange={(e) => setClientFilter(e.target.value)}
-                className="input-field"
-              >
-                <option value="all">All Clients</option>
-                {uniqueClients.map((client) => (
-                  <option key={client} value={client}>
-                    {client}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search client to filter..."
+                  value={clientFilterSearch}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setClientFilterSearch(val);
+                    if (val === "") {
+                      setClientFilter("all");
+                    }
+                    setShowClientFilterDropdown(true);
+                  }}
+                  onFocus={() => setShowClientFilterDropdown(true)}
+                  className="input-field"
+                />
+                {showClientFilterDropdown && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40 cursor-default"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowClientFilterDropdown(false);
+                      }}
+                    />
+                    <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClientFilter("all");
+                          setClientFilterSearch("");
+                          setShowClientFilterDropdown(false);
+                        }}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-primary-50 transition-colors ${
+                          clientFilter === "all" ? "bg-primary-100 font-semibold text-primary-900" : "text-gray-700"
+                        }`}
+                      >
+                        All Clients
+                      </button>
+                      {filteredFilterClients.length === 0 ? (
+                        <div className="p-3 text-sm text-gray-500 text-center">No clients found</div>
+                      ) : (
+                        filteredFilterClients.map((client) => (
+                          <button
+                            key={client}
+                            type="button"
+                            onClick={() => {
+                              setClientFilter(client);
+                              setClientFilterSearch(client);
+                              setShowClientFilterDropdown(false);
+                            }}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-primary-50 transition-colors ${
+                              clientFilter === client ? "bg-primary-100 font-semibold text-primary-900" : "text-gray-700"
+                            }`}
+                          >
+                            {client}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}
